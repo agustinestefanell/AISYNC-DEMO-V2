@@ -156,9 +156,9 @@ function createSeedTeamsMapState(): TeamsMapState {
     },
     {
       teamId: 'team_clients',
-      label: 'SM-Clients / Projects',
+      label: 'W-Clients / Projects',
       provider: 'Google' as AIProvider,
-      workers: ['W-CL01'],
+      workers: ['W-Clients / Projects'],
     },
   ];
 
@@ -176,25 +176,36 @@ function createSeedTeamsMapState(): TeamsMapState {
   const foldersByTeam: Record<string, TeamFolderItem[]> = {};
 
   teams.forEach((team, teamIndex) => {
-    teamsGraph.push({
-      id: `${team.teamId}_sm`,
-      type: 'senior_manager',
-      label: team.label,
-      provider: team.provider,
-      parentId: 'gm_1',
-      teamId: team.teamId,
-    });
-
-    team.workers.forEach((workerLabel, workerIndex) => {
+    if (team.teamId === 'team_clients') {
       teamsGraph.push({
-        id: `${team.teamId}_worker_${workerIndex + 1}`,
+        id: `${team.teamId}_worker_1`,
         type: 'worker',
-        label: workerLabel,
-        provider: PROVIDERS[(teamIndex + workerIndex) % PROVIDERS.length],
-        parentId: `${team.teamId}_sm`,
+        label: team.label,
+        provider: team.provider,
+        parentId: 'gm_1',
         teamId: team.teamId,
       });
-    });
+    } else {
+      teamsGraph.push({
+        id: `${team.teamId}_sm`,
+        type: 'senior_manager',
+        label: team.label,
+        provider: team.provider,
+        parentId: 'gm_1',
+        teamId: team.teamId,
+      });
+
+      team.workers.forEach((workerLabel, workerIndex) => {
+        teamsGraph.push({
+          id: `${team.teamId}_worker_${workerIndex + 1}`,
+          type: 'worker',
+          label: workerLabel,
+          provider: PROVIDERS[(teamIndex + workerIndex) % PROVIDERS.length],
+          parentId: `${team.teamId}_sm`,
+          teamId: team.teamId,
+        });
+      });
+    }
 
     foldersByTeam[team.teamId] = buildFolderSeed(team.teamId, team.label);
   });
@@ -203,19 +214,38 @@ function createSeedTeamsMapState(): TeamsMapState {
 }
 
 function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
+  const clientManager = input.teamsGraph.find(
+    (node) => node.type === 'senior_manager' && node.teamId === 'team_clients',
+  );
   const clientWorkers = input.teamsGraph
     .filter((node) => node.type === 'worker' && node.teamId === 'team_clients')
     .sort((left, right) => left.id.localeCompare(right.id));
-
-  if (clientWorkers.length <= 1) {
-    return input;
-  }
-
-  const idsToRemove = new Set(clientWorkers.slice(1).map((node) => node.id));
+  const remainingNodes = input.teamsGraph.filter((node) => node.teamId !== 'team_clients');
+  const primaryWorker = clientWorkers[0];
+  const clientWorker: TeamsGraphNode = primaryWorker
+    ? {
+        ...primaryWorker,
+        label: 'W-Clients / Projects',
+        parentId: 'gm_1',
+        provider: primaryWorker.provider || clientManager?.provider || 'Google',
+      }
+    : {
+        id: 'team_clients_worker_1',
+        type: 'worker',
+        label: 'W-Clients / Projects',
+        provider: clientManager?.provider || 'Google',
+        parentId: 'gm_1',
+        teamId: 'team_clients',
+      };
 
   return {
-    ...input,
-    teamsGraph: input.teamsGraph.filter((node) => !idsToRemove.has(node.id)),
+    teamsGraph: [...remainingNodes, clientWorker],
+    foldersByTeam: {
+      ...input.foldersByTeam,
+      team_clients:
+        input.foldersByTeam.team_clients ??
+        buildFolderSeed('team_clients', 'W-Clients / Projects'),
+    },
   };
 }
 
@@ -366,6 +396,7 @@ function OrgNodeCard({
   subtle?: boolean;
   onClick: () => void;
 }) {
+  const isGeneralManager = node.type === 'general_manager';
   const isSeniorManager = node.type === 'senior_manager';
 
   return (
@@ -373,6 +404,8 @@ function OrgNodeCard({
       className={`w-full rounded-[12px] border px-3 py-3 text-left transition-colors hover:border-neutral-500 ${
         subtle
           ? 'border-neutral-200 bg-white shadow-[var(--shadow-soft)]'
+          : isGeneralManager
+            ? 'border-[rgba(17,17,17,0.12)] bg-[rgba(17,17,17,0.03)] shadow-[var(--shadow-soft)]'
           : isSeniorManager
             ? 'border-[rgba(0,122,255,0.12)] bg-[rgba(0,122,255,0.04)] shadow-[var(--shadow-soft)]'
             : 'border-neutral-300 bg-white shadow-[var(--shadow-soft)]'
@@ -420,6 +453,27 @@ export function PageD() {
     () => teamsState.teamsGraph.find((node) => node.type === 'general_manager') ?? null,
     [teamsState.teamsGraph],
   );
+  const topLevelUnits = useMemo(() => {
+    const orderIndex = (node: TeamsGraphNode) => {
+      if (node.teamId === 'team_legal') return 0;
+      if (node.teamId === 'team_marketing') return 1;
+      if (node.teamId === 'team_clients') return 2;
+      return 3;
+    };
+
+    return [...teamsState.teamsGraph]
+      .filter((node) => node.parentId === 'gm_1')
+      .sort((left, right) => {
+        const leftOrder = orderIndex(left);
+        const rightOrder = orderIndex(right);
+
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+
+        return left.label.localeCompare(right.label);
+      });
+  }, [teamsState.teamsGraph]);
   const seniorManagers = useMemo(
     () => teamsState.teamsGraph.filter((node) => node.type === 'senior_manager'),
     [teamsState.teamsGraph],
@@ -440,7 +494,7 @@ export function PageD() {
   const totalWorkers = teamsState.teamsGraph.filter((node) => node.type === 'worker').length;
 
   const getWorkspaceAgentForTeam = (teamId: string): AgentRole => {
-    const index = seniorManagers.findIndex((manager) => manager.teamId === teamId);
+    const index = topLevelUnits.findIndex((node) => node.teamId === teamId);
     if (index === -1) {
       return 'manager';
     }
@@ -642,22 +696,28 @@ export function PageD() {
                   <div className="h-px w-[76%] bg-neutral-300" />
 
                   <div className="mt-4 grid w-full gap-6 xl:grid-cols-3">
-                    {seniorManagers.map((manager) => (
-                      <div key={manager.id} className="ui-surface-subtle flex flex-col items-center p-4">
-                        {(() => {
-                          const teamWorkers = workersByTeam[manager.teamId] ?? [];
-                          const workerGridClass =
-                            teamWorkers.length === 1
-                              ? 'mx-auto grid w-full max-w-[220px] gap-3'
-                              : 'grid w-full gap-3 md:grid-cols-3 xl:grid-cols-3';
+                    {topLevelUnits.map((unit) => {
+                      const topLevelCardWidthClass = 'w-full';
+                      const teamWorkers =
+                        unit.type === 'senior_manager' ? workersByTeam[unit.teamId] ?? [] : [];
+                      const workerGridClass =
+                        teamWorkers.length === 1
+                          ? 'mx-auto grid w-full max-w-[220px] gap-3'
+                          : 'grid w-full gap-3 md:grid-cols-3 xl:grid-cols-3';
 
-                          return (
+                      return (
+                        <div key={unit.id} className="ui-surface-subtle flex flex-col items-center p-4">
+                          <div className="mb-3 h-5 w-px bg-neutral-300" />
+                          <div className={topLevelCardWidthClass}>
+                            <OrgNodeCard
+                              node={unit}
+                              subtle={unit.type === 'worker'}
+                              onClick={() => setSelectedNodeId(unit.id)}
+                            />
+                          </div>
+
+                          {unit.type === 'senior_manager' && (
                             <>
-                              <div className="mb-3 h-5 w-px bg-neutral-300" />
-                              <div className="w-full">
-                                <OrgNodeCard node={manager} onClick={() => setSelectedNodeId(manager.id)} />
-                              </div>
-
                               <div className="mt-4 h-5 w-px bg-neutral-300" />
                               <div className={workerGridClass}>
                                 {teamWorkers.map((worker) => (
@@ -672,10 +732,10 @@ export function PageD() {
                                 ))}
                               </div>
                             </>
-                          );
-                        })()}
-                      </div>
-                    ))}
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -687,18 +747,18 @@ export function PageD() {
               </div>
 
               <div className="grid gap-4 xl:grid-cols-3">
-                {seniorManagers.map((manager) => {
-                  const counts = countArtifacts(teamsState.foldersByTeam[manager.teamId] ?? []);
+                {topLevelUnits.map((unit) => {
+                  const counts = countArtifacts(teamsState.foldersByTeam[unit.teamId] ?? []);
                   return (
-                    <div key={manager.teamId} className="ui-surface-subtle p-3">
+                    <div key={unit.teamId} className="ui-surface-subtle p-3">
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-xs font-semibold text-neutral-800">{manager.label}</div>
+                        <div className="text-xs font-semibold text-neutral-800">{unit.label}</div>
                         <div className="text-[10px] text-neutral-500">
                           C {counts.conversations} | D {counts.documents} | R {counts.reports}
                         </div>
                       </div>
 
-                      <TeamTree items={teamsState.foldersByTeam[manager.teamId] ?? []} compact />
+                      <TeamTree items={teamsState.foldersByTeam[unit.teamId] ?? []} compact />
                     </div>
                   );
                 })}
@@ -715,12 +775,12 @@ export function PageD() {
             </div>
 
             <div className="grid gap-5 xl:grid-cols-3">
-              {seniorManagers.map((manager) => (
-                <div key={manager.teamId} className="ui-surface-subtle p-4">
-                  <div className="mb-3 text-sm font-semibold text-neutral-900">{manager.label}</div>
+              {topLevelUnits.map((unit) => (
+                <div key={unit.teamId} className="ui-surface-subtle p-4">
+                  <div className="mb-3 text-sm font-semibold text-neutral-900">{unit.label}</div>
                   <TeamTree
-                    items={teamsState.foldersByTeam[manager.teamId] ?? []}
-                    onOpenFile={(item) => openFolderFile(item, manager.teamId, manager.label)}
+                    items={teamsState.foldersByTeam[unit.teamId] ?? []}
+                    onOpenFile={(item) => openFolderFile(item, unit.teamId, unit.label)}
                   />
                 </div>
               ))}
