@@ -78,6 +78,14 @@ function buildSaveContent(messages: Message[], selectedIds: string[]) {
     .join('\n\n');
 }
 
+function buildForwardedContent(messages: Message[], sourceLabel: string) {
+  const body = messages
+    .map((message) => `${message.senderLabel}: ${message.content.trim()}`)
+    .join('\n\n');
+
+  return `FORWARDED FROM ${sourceLabel}\n\n${body}`;
+}
+
 export interface AgentPanelProps {
   agent: AgentRole;
   showSaveAction?: boolean;
@@ -102,7 +110,6 @@ export function AgentPanel({
   const viewportRef = useRef<HTMLDivElement>(null);
   const isManager = agent === 'manager';
 
-  const [showTargets, setShowTargets] = useState(false);
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [toast, setToast] = useState('');
@@ -199,11 +206,8 @@ export function AgentPanel({
     }
 
     const orderedMessages = messages.filter((message) => selectedIds.includes(message.id));
-    const packet = orderedMessages
-      .map((message) => `${message.senderLabel}: ${message.content}`)
-      .join('\n\n');
     const sourceLabel = getAgentLabel(agent).toUpperCase();
-    const forwardedContent = `FORWARDED FROM ${sourceLabel}\n\n${packet}`;
+    const forwardedContent = buildForwardedContent(orderedMessages, sourceLabel);
 
     dispatch({
       type: 'ADD_MESSAGE',
@@ -218,15 +222,7 @@ export function AgentPanel({
         variant: 'forwarded',
       },
     });
-    dispatch({
-      type: 'SET_DRAFT',
-      agent: forwardTarget,
-      value: state.drafts[forwardTarget]
-        ? `${state.drafts[forwardTarget]}\n\n${forwardedContent}`
-        : forwardedContent,
-    });
     dispatch({ type: 'CLEAR_SELECTION', agent });
-    setShowTargets(false);
     setToast(`Forwarded ${orderedMessages.length} message(s) to ${getAgentLabel(forwardTarget)}.`);
   };
 
@@ -245,6 +241,10 @@ export function AgentPanel({
     setToast('Saved to Documentation Mode.');
   };
 
+  const openPromptsLibrary = () => {
+    dispatch({ type: 'SET_PAGE', page: 'E' });
+  };
+
   return (
     <div
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-r last:border-r-0 ${
@@ -261,45 +261,51 @@ export function AgentPanel({
             : 'ui-worker-header'
         }`}
       >
-        {editableRole && editingRole ? (
-          <input
-            className="ui-input h-8 min-h-8 px-2 text-xs"
-            value={roleInput}
-            onChange={(event) => setRoleInput(event.target.value)}
-            onBlur={() => {
-              dispatch({
-                type: 'SET_WORKER_ROLE',
-                worker: agent as 'worker1' | 'worker2',
-                role: roleInput.trim(),
-              });
-              setEditingRole(false);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
+        <div className="flex items-center gap-2">
+          {editableRole && editingRole ? (
+            <input
+              className="ui-input h-8 min-h-8 flex-1 px-2 text-xs"
+              value={roleInput}
+              onChange={(event) => setRoleInput(event.target.value)}
+              onBlur={() => {
                 dispatch({
                   type: 'SET_WORKER_ROLE',
                   worker: agent as 'worker1' | 'worker2',
                   role: roleInput.trim(),
                 });
                 setEditingRole(false);
-              }
-            }}
-            autoFocus
-          />
-        ) : (
-          <button
-            className={`w-full text-left text-[11px] font-semibold tracking-[0.12em] ${
-              editableRole ? 'cursor-pointer' : 'cursor-default'
-            }`}
-            onClick={() => {
-              if (editableRole) {
-                setEditingRole(true);
-              }
-            }}
-          >
-            {headerLabel}
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  dispatch({
+                    type: 'SET_WORKER_ROLE',
+                    worker: agent as 'worker1' | 'worker2',
+                    role: roleInput.trim(),
+                  });
+                  setEditingRole(false);
+                }
+              }}
+              autoFocus
+            />
+          ) : (
+            <button
+              className={`flex-1 text-left text-[11px] font-semibold tracking-[0.12em] ${
+                editableRole ? 'cursor-pointer' : 'cursor-default'
+              }`}
+              onClick={() => {
+                if (editableRole) {
+                  setEditingRole(true);
+                }
+              }}
+            >
+              {headerLabel}
+            </button>
+          )}
+
+          <button className="ui-chat-prompt shrink-0" onClick={openPromptsLibrary}>
+            +Promts
           </button>
-        )}
+        </div>
       </div>
 
       <div
@@ -401,10 +407,10 @@ export function AgentPanel({
         </div>
       </div>
 
-      <div className={`shrink-0 px-3 py-2 ${isManager ? 'ui-manager-section' : 'ui-worker-section'}`}>
-        <div className="flex items-center gap-2">
+      <div className={`shrink-0 px-3 pb-2 pt-1 ${isManager ? 'ui-manager-section' : 'ui-worker-section'}`}>
+        <div className="ui-chat-composer">
           <input
-            className="ui-input flex-1 text-xs"
+            className="ui-chat-composer-input"
             placeholder={`Message ${MODEL_LABELS[agent]}...`}
             value={draft}
             onChange={(event) =>
@@ -418,7 +424,7 @@ export function AgentPanel({
             }}
           />
           <button
-            className="ui-button text-xs text-neutral-700"
+            className="ui-button ui-button-primary ui-chat-send text-xs text-white"
             onClick={sendMessage}
           >
             Send
@@ -426,61 +432,40 @@ export function AgentPanel({
         </div>
       </div>
 
-      <div className={`shrink-0 px-3 py-2 ${isManager ? 'ui-manager-section' : 'ui-worker-section-soft'}`}>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <button
-              className="ui-button flex w-full justify-between px-3 text-xs text-neutral-700"
-              onClick={() => setShowTargets((value) => !value)}
+      <div className={`shrink-0 px-3 pb-2 pt-1 ${isManager ? 'ui-manager-section' : 'ui-worker-section-soft'}`}>
+        <div className="ui-forward-row">
+          <span className="ui-meta shrink-0 text-[11px]">Select messages to forward</span>
+
+          <div className="ui-forward-select-wrap">
+            <select
+              className="ui-forward-select"
+              value={forwardTarget}
+              onChange={(event) => setForwardTarget(event.target.value as AgentRole)}
             >
-              <span>
-                Forward to {getAgentLabel(forwardTarget).toUpperCase()} (choose agent)
-              </span>
-              <span className="text-neutral-400">v</span>
-            </button>
-            {showTargets && (
-              <div className="ui-surface fade-in absolute bottom-full left-0 z-20 mb-1 w-full">
-                {targetOptions.map((option) => (
-                  <button
-                    key={option}
-                    className="block w-full px-3 py-2 text-left text-xs text-neutral-700 transition-colors hover:bg-neutral-50"
-                    onClick={() => {
-                      setForwardTarget(option);
-                      setShowTargets(false);
-                    }}
-                  >
-                    {getAgentLabel(option)}
-                  </button>
-                ))}
-              </div>
-            )}
+              {targetOptions.map((option) => (
+                <option key={option} value={option}>
+                  {getAgentLabel(option)}
+                </option>
+              ))}
+            </select>
+            <span className="ui-forward-select-caret">v</span>
           </div>
+
           <button
-            className="ui-button px-2 text-xs text-neutral-500"
-            onClick={() => setToast(`${selectedIds.length} message(s) selected.`)}
-            title="Selected count"
-          >
-            View
-          </button>
-          <button
-            className="ui-button px-2 text-xs text-neutral-700"
+            className="ui-button px-3 text-xs text-neutral-700 disabled:cursor-not-allowed disabled:opacity-45"
             onClick={handleForward}
             title="Forward selected messages"
+            disabled={selectedIds.length === 0}
           >
-            Send to
+            Send
           </button>
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="ui-meta text-[11px]">
-            {selectedIds.length > 0
-              ? `${selectedIds.length} message(s) selected`
-              : 'Select messages to forward'}
-          </span>
+        {(showSaveAction || selectedIds.length > 0) && (
           <div className="flex items-center gap-3">
             {showSaveAction && (
               <button
-                className="text-[11px] font-medium text-neutral-700 underline-offset-2 hover:underline"
+                className="mt-1 text-[11px] font-medium text-neutral-700 underline-offset-2 hover:underline"
                 onClick={() => setShowSaveModal(true)}
               >
                 Save as file
@@ -488,18 +473,18 @@ export function AgentPanel({
             )}
             {selectedIds.length > 0 && (
               <button
-                className="text-[11px] text-neutral-500 underline-offset-2 hover:underline"
+                className="mt-1 text-[11px] text-neutral-500 underline-offset-2 hover:underline"
                 onClick={() => dispatch({ type: 'CLEAR_SELECTION', agent })}
               >
                 Clear selection
               </button>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {showRefreshAction && (
-        <div className={`shrink-0 px-3 py-2 ${isManager ? 'ui-manager-section' : 'ui-worker-section'}`}>
+        <div className={`shrink-0 px-3 pb-3 pt-1 ${isManager ? 'ui-manager-section' : 'ui-worker-section'}`}>
           <button
             className="text-[11px] font-semibold tracking-[0.12em] text-neutral-600 transition-colors hover:text-black"
             onClick={() => setShowRefreshConfirm(true)}
