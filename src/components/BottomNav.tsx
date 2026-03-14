@@ -33,6 +33,7 @@ export function BottomNav() {
   const { state, dispatch, saveWorkerConfig } = useApp();
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const [showWorkerModal, setShowWorkerModal] = useState(false);
   const [toast, setToast] = useState('');
   const [workerName, setWorkerName] = useState('');
@@ -43,6 +44,7 @@ export function BottomNav() {
   const closeMenus = () => {
     setShowSettings(false);
     setShowAdvanced(false);
+    setShowMore(false);
   };
 
   const resetWorkerForm = () => {
@@ -94,10 +96,10 @@ export function BottomNav() {
   return (
     <>
       <nav
-        className="ui-bottomnav relative shrink-0 px-4 text-white"
+        className="ui-bottomnav relative shrink-0 px-2 text-white sm:px-4"
         style={{ backgroundColor: ribbonColor }}
       >
-        <div className="mx-auto flex h-12 max-w-[1600px] min-w-0 items-center justify-center gap-3 overflow-hidden lg:gap-5">
+        <div className="mx-auto hidden max-w-[1600px] min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 py-1 sm:flex lg:h-12 lg:flex-nowrap lg:gap-5 lg:py-0">
           <NavButton
             label="+ Worker"
             onClick={() => {
@@ -106,7 +108,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
             label="Main Workspace"
@@ -117,7 +119,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
             label="Teams Map"
@@ -128,7 +130,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
             label="Documentation Mode"
@@ -139,7 +141,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
             label="Traceability Calendar"
@@ -150,7 +152,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
             label="Prompts Library"
@@ -161,7 +163,7 @@ export function BottomNav() {
             }}
           />
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <div className="relative">
             <button
@@ -169,6 +171,7 @@ export function BottomNav() {
               onClick={() => {
                 setShowSettings((value) => !value);
                 setShowAdvanced(false);
+                setShowMore(false);
               }}
             >
               Settings
@@ -187,7 +190,7 @@ export function BottomNav() {
             )}
           </div>
 
-          <span className="text-white/20">|</span>
+          <span className="hidden text-white/20 lg:block">|</span>
 
           <div className="relative">
             <button
@@ -195,6 +198,7 @@ export function BottomNav() {
               onClick={() => {
                 setShowAdvanced((value) => !value);
                 setShowSettings(false);
+                setShowMore(false);
               }}
             >
               Advanced
@@ -205,6 +209,123 @@ export function BottomNav() {
                   <button
                     key={item}
                     className="block w-full px-4 py-2 text-left text-xs text-white/65 transition-colors hover:bg-white/8"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mx-auto grid min-h-14 max-w-[1600px] min-w-0 grid-cols-4 items-center gap-1 py-1 sm:hidden">
+          <button
+            className={`ui-nav-button min-w-0 w-full rounded-[10px] px-1 text-[10px] ${
+              state.currentPage === 'A'
+                ? 'bg-white/14 text-white'
+                : 'text-white/78 hover:bg-white/8 hover:text-white'
+            }`}
+            onClick={() => {
+              dispatch({ type: 'SET_PAGE', page: 'A' });
+              closeMenus();
+            }}
+          >
+            Main
+          </button>
+          <button
+            className={`ui-nav-button min-w-0 w-full rounded-[10px] px-1 text-[10px] ${
+              state.currentPage === 'B'
+                ? 'bg-white/14 text-white'
+                : 'text-white/78 hover:bg-white/8 hover:text-white'
+            }`}
+            onClick={() => {
+              dispatch({ type: 'SET_PAGE', page: 'B' });
+              closeMenus();
+            }}
+          >
+            Docs
+          </button>
+          <button
+            className={`ui-nav-button min-w-0 w-full rounded-[10px] px-1 text-[10px] ${
+              state.currentPage === 'C'
+                ? 'bg-white/14 text-white'
+                : 'text-white/78 hover:bg-white/8 hover:text-white'
+            }`}
+            onClick={() => {
+              dispatch({ type: 'SET_PAGE', page: 'C' });
+              closeMenus();
+            }}
+          >
+            Cal
+          </button>
+
+          <div className="relative min-w-0">
+            <button
+              className="ui-nav-button min-w-0 w-full rounded-[10px] px-1 text-[10px] text-white/78 transition-colors hover:bg-white/8 hover:text-white"
+              onClick={() => {
+                setShowMore((value) => !value);
+                setShowSettings(false);
+                setShowAdvanced(false);
+              }}
+            >
+              More
+            </button>
+
+            {showMore && (
+              <div className="ui-popover absolute bottom-14 right-0 z-20 w-[min(88vw,280px)] py-1">
+                <div className="border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                  Pages
+                </div>
+                {[
+                  ['Teams Map', 'D'],
+                  ['Prompts Library', 'E'],
+                ].map(([label, page]) => (
+                  <button
+                    key={label}
+                    className="block w-full px-4 py-2 text-left text-xs text-white/86 transition-colors hover:bg-white/8"
+                    onClick={() => {
+                      dispatch({ type: 'SET_PAGE', page: page as 'D' | 'E' });
+                      closeMenus();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+
+                <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                  Tools
+                </div>
+                <button
+                  className="block w-full px-4 py-2 text-left text-xs text-white/86 transition-colors hover:bg-white/8"
+                  onClick={() => {
+                    closeMenus();
+                    setShowWorkerModal(true);
+                  }}
+                >
+                  + Worker
+                </button>
+
+                <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                  Settings
+                </div>
+                {['Project Settings', 'Agent Labels', 'Theme Preset'].map((item) => (
+                  <button
+                    key={item}
+                    className="block w-full px-4 py-2 text-left text-xs text-white/65 transition-colors hover:bg-white/8"
+                    onClick={closeMenus}
+                  >
+                    {item}
+                  </button>
+                ))}
+
+                <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                  Advanced
+                </div>
+                {['Session Inspector', 'Forwarding Audit', 'Backup Notes'].map((item) => (
+                  <button
+                    key={item}
+                    className="block w-full px-4 py-2 text-left text-xs text-white/65 transition-colors hover:bg-white/8"
+                    onClick={closeMenus}
                   >
                     {item}
                   </button>

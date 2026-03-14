@@ -4,7 +4,6 @@ import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
 import { useApp } from '../context';
 import { DividerRail } from '../components/DividerRail';
-import { SECONDARY_MANAGER_PANEL_WIDTH } from '../layout';
 import type { PromptItem, PromptVisibility } from '../types';
 
 const PRIVATE_PROMPTS_KEY = 'aisync_private_prompts_v1';
@@ -242,6 +241,8 @@ function formatDate(value: string) {
 
 export function PageE() {
   const { state, dispatch } = useApp();
+  const [showManagerMobile, setShowManagerMobile] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [publicPrompts, setPublicPrompts] = useState<PromptItem[]>(buildPublicPrompts);
   const [privatePrompts, setPrivatePrompts] = useState<PromptItem[]>(loadPrivatePrompts);
   const [search, setSearch] = useState('');
@@ -433,250 +434,317 @@ export function PageE() {
     setToast('Private prompt added');
   };
 
-  return (
-    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-3 py-3">
-      <div className="app-frame mx-auto flex h-full min-h-0 w-full max-w-[1600px] overflow-hidden">
-        <AgentPanel
-          agent="manager"
-          style={{ width: SECONDARY_MANAGER_PANEL_WIDTH, flexShrink: 0 }}
-        />
+  const filterSidebar = (
+    <aside
+      data-prompts-sidebar
+      className="ui-surface scrollbar-thin w-full overflow-y-auto px-4 py-4 sm:w-[220px] sm:shrink-0 md:w-[240px] lg:w-[278px]"
+    >
+      <div className="mb-5">
+        <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-neutral-700">
+          Collections
+        </div>
 
-        <DividerRail />
+        <div className="grid gap-1">
+          <button
+            className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
+              selectedCollection === 'All Collections'
+                ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
+                : 'text-neutral-700 hover:bg-neutral-50'
+            }`}
+            onClick={() => setSelectedCollection('All Collections')}
+          >
+            <span>All Collections</span>
+            <span className="text-neutral-400">{allPrompts.length}</span>
+          </button>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
-          <div className="px-3 pb-2 pt-3">
-            <div className="ui-surface px-4 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h1 className="ui-title">PROMPTS LIBRARY</h1>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    Public and private prompt indexing for AISync workflows, startup execution, and reusable delivery patterns.
-                  </p>
-                </div>
+          {COLLECTIONS.map((collection) => (
+            <button
+              key={collection}
+              className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
+                selectedCollection === collection
+                  ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
+                  : 'text-neutral-700 hover:bg-neutral-50'
+              }`}
+              onClick={() => setSelectedCollection(collection)}
+            >
+              <span>{collection}</span>
+              <span className="text-neutral-400">{collectionCounts[collection]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-                <button
-                  className="ui-button ui-button-primary text-white"
-                  onClick={() => setShowAddModal(true)}
+      <div>
+        <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-neutral-700">
+          Alphabet / Codes
+        </div>
+
+        <div className="grid gap-1">
+          <button
+            className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
+              selectedCode === 'All Codes'
+                ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
+                : 'text-neutral-700 hover:bg-neutral-50'
+            }`}
+            onClick={() => setSelectedCode('All Codes')}
+          >
+            <span>All Codes</span>
+            <span className="text-neutral-400">{allPrompts.length}</span>
+          </button>
+
+          {CODE_INDEX.map((code) => (
+            <button
+              key={code}
+              className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
+                selectedCode === code
+                  ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
+                  : 'text-neutral-700 hover:bg-neutral-50'
+              }`}
+              onClick={() => setSelectedCode(code)}
+            >
+              <span>{code}</span>
+              <span className="text-neutral-400">{codeCounts[code]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+
+  const promptsContent = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
+      <div className="px-2 pb-2 pt-2 sm:px-3 sm:pt-3">
+        <div className="ui-surface px-4 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div>
+              <h1 className="ui-title">PROMPTS LIBRARY</h1>
+              <p className="mt-1 text-sm text-neutral-600">
+                Public and private prompt indexing for AISync workflows, startup execution, and reusable delivery patterns.
+              </p>
+            </div>
+
+            <button
+              className="ui-button ui-button-primary w-full text-white sm:w-auto"
+              onClick={() => setShowAddModal(true)}
+            >
+              + Add Private Prompt
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pb-2 sm:px-3 sm:pb-3">
+        <div className="ui-surface mb-3 px-4 py-3">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
+            <label className="grid gap-1">
+              <span className="ui-label">Search</span>
+              <input
+                className="ui-input"
+                placeholder="Search by title, tags, code, or collection"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+
+            <div className="grid gap-1">
+              <span className="ui-label">Visibility</span>
+              <div className="flex flex-wrap gap-2">
+                {(['all', 'public', 'private'] as VisibilityFilter[]).map((value) => (
+                  <button
+                    key={value}
+                    className={`ui-button ${
+                      visibilityFilter === value ? 'ui-button-primary text-white' : 'text-neutral-700'
+                    }`}
+                    onClick={() => setVisibilityFilter(value)}
+                  >
+                    {value === 'all'
+                      ? 'All'
+                      : value === 'public'
+                        ? 'Public'
+                        : 'Private'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[auto_auto] xl:grid-cols-[auto]">
+              <label className="grid gap-1">
+                <span className="ui-label">Sort</span>
+                <select
+                  className="ui-input"
+                  value={sortMode}
+                  onChange={(event) => setSortMode(event.target.value as SortMode)}
                 >
-                  + Add Private Prompt
+                  <option value="used">Most used</option>
+                  <option value="az">A-Z</option>
+                  <option value="recent">Recently added</option>
+                </select>
+              </label>
+
+              <div className="grid gap-1 sm:self-end xl:hidden">
+                <span className="ui-label sm:invisible">Filters</span>
+                <button
+                  data-prompts-filter-button
+                  className="ui-button text-neutral-700 sm:hidden"
+                  onClick={() => setShowMobileFilters(true)}
+                >
+                  Filter / Index
                 </button>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col px-3 pb-3">
-            <div className="ui-surface mb-3 px-4 py-3">
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
-                <label className="grid gap-1">
-                  <span className="ui-label">Search</span>
-                  <input
-                    className="ui-input"
-                    placeholder="Search by title, tags, code, or collection"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                </label>
+        <div className="flex min-h-0 min-w-0 flex-1 gap-3">
+          <div className="hidden sm:block">{filterSidebar}</div>
 
-                <div className="grid gap-1">
-                  <span className="ui-label">Visibility</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(['all', 'public', 'private'] as VisibilityFilter[]).map((value) => (
-                      <button
-                        key={value}
-                        className={`ui-button ${
-                          visibilityFilter === value ? 'ui-button-primary text-white' : 'text-neutral-700'
-                        }`}
-                        onClick={() => setVisibilityFilter(value)}
-                      >
-                        {value === 'all'
-                          ? 'All'
-                          : value === 'public'
-                            ? 'Public'
-                            : 'Private'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <label className="grid gap-1">
-                  <span className="ui-label">Sort</span>
-                  <select
-                    className="ui-input"
-                    value={sortMode}
-                    onChange={(event) => setSortMode(event.target.value as SortMode)}
-                  >
-                    <option value="used">Most used</option>
-                    <option value="az">A-Z</option>
-                    <option value="recent">Recently added</option>
-                  </select>
-                </label>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="ui-surface mb-3 flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <div className="text-sm font-medium text-neutral-800">
+                {filteredPrompts.length} prompt{filteredPrompts.length === 1 ? '' : 's'} visible
+              </div>
+              <div className="text-xs text-neutral-500">
+                Manager draft length: {state.drafts.manager.length} chars
               </div>
             </div>
 
-            <div className="flex min-h-0 min-w-0 flex-1 gap-3">
-              <aside className="ui-surface scrollbar-thin w-[278px] shrink-0 overflow-y-auto px-4 py-4">
-                <div className="mb-5">
-                  <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-neutral-700">
-                    Collections
-                  </div>
-
-                  <div className="grid gap-1">
-                    <button
-                      className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                        selectedCollection === 'All Collections'
-                          ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
-                          : 'text-neutral-700 hover:bg-neutral-50'
-                      }`}
-                      onClick={() => setSelectedCollection('All Collections')}
-                    >
-                      <span>All Collections</span>
-                      <span className="text-neutral-400">{allPrompts.length}</span>
-                    </button>
-
-                    {COLLECTIONS.map((collection) => (
-                      <button
-                        key={collection}
-                        className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                          selectedCollection === collection
-                            ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
-                            : 'text-neutral-700 hover:bg-neutral-50'
-                        }`}
-                        onClick={() => setSelectedCollection(collection)}
-                      >
-                        <span>{collection}</span>
-                        <span className="text-neutral-400">{collectionCounts[collection]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-neutral-700">
-                    Alphabet / Codes
-                  </div>
-
-                  <div className="grid gap-1">
-                    <button
-                      className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                        selectedCode === 'All Codes'
-                          ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
-                          : 'text-neutral-700 hover:bg-neutral-50'
-                      }`}
-                      onClick={() => setSelectedCode('All Codes')}
-                    >
-                      <span>All Codes</span>
-                      <span className="text-neutral-400">{allPrompts.length}</span>
-                    </button>
-
-                    {CODE_INDEX.map((code) => (
-                      <button
-                        key={code}
-                        className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                          selectedCode === code
-                            ? 'bg-[rgba(0,122,255,0.08)] text-[var(--color-accent-strong)]'
-                            : 'text-neutral-700 hover:bg-neutral-50'
-                        }`}
-                        onClick={() => setSelectedCode(code)}
-                      >
-                        <span>{code}</span>
-                        <span className="text-neutral-400">{codeCounts[code]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </aside>
-
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <div className="ui-surface mb-3 flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="text-sm font-medium text-neutral-800">
-                    {filteredPrompts.length} prompt{filteredPrompts.length === 1 ? '' : 's'} visible
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    Manager draft length: {state.drafts.manager.length} chars
-                  </div>
-                </div>
-
-                <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                  {filteredPrompts.length > 0 ? (
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      {filteredPrompts.map((prompt) => (
-                        <div key={prompt.id} className="ui-surface px-4 py-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span
-                                  className={`ui-pill ${
-                                    prompt.visibility === 'public'
-                                      ? 'border-[rgba(0,122,255,0.15)] bg-[rgba(0,122,255,0.06)] text-[var(--color-accent-strong)]'
-                                      : 'bg-neutral-100 text-neutral-700'
-                                  }`}
-                                >
-                                  {prompt.visibility === 'public' ? 'Public' : 'Private'}
-                                </span>
-                                <span className="ui-pill text-neutral-700">{prompt.code}</span>
-                                <span className="text-[11px] text-neutral-500">{prompt.collection}</span>
-                              </div>
-
-                              <h3 className="mt-3 text-base font-semibold tracking-[-0.01em] text-neutral-900">
-                                {prompt.title}
-                              </h3>
-                              <p className="mt-1 text-sm text-neutral-600">{prompt.description}</p>
-                            </div>
-
-                            <div className="shrink-0 text-right text-[11px] text-neutral-500">
-                              <div>Used {prompt.usageCount}x</div>
-                              <div>{formatDate(prompt.updatedAt)}</div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {prompt.tags.map((tag) => (
-                              <span key={`${prompt.id}_${tag}`} className="ui-pill text-neutral-600">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div className="ui-surface-subtle mt-4 px-3 py-3 text-xs leading-5 text-neutral-700">
-                            {prompt.promptText}
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                              className="ui-button ui-button-primary text-white"
-                              onClick={() => handleUsePrompt(prompt)}
+            <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              {filteredPrompts.length > 0 ? (
+                <div className="grid gap-3 xl:grid-cols-2">
+                  {filteredPrompts.map((prompt) => (
+                    <div key={prompt.id} className="ui-surface px-4 py-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`ui-pill ${
+                                prompt.visibility === 'public'
+                                  ? 'border-[rgba(0,122,255,0.15)] bg-[rgba(0,122,255,0.06)] text-[var(--color-accent-strong)]'
+                                  : 'bg-neutral-100 text-neutral-700'
+                              }`}
                             >
-                              Use
-                            </button>
-                            <button
-                              className="ui-button text-neutral-700"
-                              onClick={() => void handleCopyPrompt(prompt)}
-                            >
-                              Copy
-                            </button>
-                            {prompt.visibility === 'public' && (
-                              <button
-                                className="ui-button text-neutral-700"
-                                onClick={() => handleSaveAsPrivate(prompt)}
-                              >
-                                Save as Private
-                              </button>
-                            )}
+                              {prompt.visibility === 'public' ? 'Public' : 'Private'}
+                            </span>
+                            <span className="ui-pill text-neutral-700">{prompt.code}</span>
+                            <span className="text-[11px] text-neutral-500">{prompt.collection}</span>
                           </div>
+
+                          <h3 className="mt-3 text-base font-semibold tracking-[-0.01em] text-neutral-900">
+                            {prompt.title}
+                          </h3>
+                          <p className="mt-1 text-sm text-neutral-600">{prompt.description}</p>
                         </div>
-                      ))}
+
+                        <div className="shrink-0 text-right text-[11px] text-neutral-500">
+                          <div>Used {prompt.usageCount}x</div>
+                          <div>{formatDate(prompt.updatedAt)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {prompt.tags.map((tag) => (
+                          <span key={`${prompt.id}_${tag}`} className="ui-pill text-neutral-600">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="ui-surface-subtle mt-4 px-3 py-3 text-xs leading-5 text-neutral-700">
+                        {prompt.promptText}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          className="ui-button ui-button-primary text-white"
+                          onClick={() => handleUsePrompt(prompt)}
+                        >
+                          Use
+                        </button>
+                        <button
+                          className="ui-button text-neutral-700"
+                          onClick={() => void handleCopyPrompt(prompt)}
+                        >
+                          Copy
+                        </button>
+                        {prompt.visibility === 'public' && (
+                          <button
+                            className="ui-button text-neutral-700"
+                            onClick={() => handleSaveAsPrivate(prompt)}
+                          >
+                            Save as Private
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="ui-surface flex h-full min-h-[220px] items-center justify-center px-6 text-center text-sm text-neutral-500">
-                      No prompts match the current filters.
-                    </div>
-                  )}
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="ui-surface flex h-full min-h-[220px] items-center justify-center px-6 text-center text-sm text-neutral-500">
+                  No prompts match the current filters.
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2">
+        <div className="ui-surface flex items-center justify-between gap-3 px-3 py-2 sm:hidden">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            Manager Panel
+          </div>
+          <button
+            className="ui-button min-h-9 px-3 text-xs text-neutral-700"
+            onClick={() => setShowManagerMobile((value) => !value)}
+          >
+            {showManagerMobile ? 'Hide Manager' : 'Show Manager'}
+          </button>
+        </div>
+
+        {showManagerMobile && (
+          <div className="app-frame flex h-[46dvh] min-h-0 overflow-hidden sm:hidden">
+            <AgentPanel agent="manager" />
+          </div>
+        )}
+
+        <div className="app-frame flex min-h-0 flex-1 overflow-hidden sm:hidden">
+          {promptsContent}
+        </div>
+
+        <div className="app-frame hidden min-h-0 flex-1 overflow-hidden sm:flex">
+          <AgentPanel agent="manager" className="w-[280px] shrink-0 md:w-[320px] lg:w-[432px]" />
+          <DividerRail />
+          {promptsContent}
+        </div>
+      </div>
+
+      {showMobileFilters && (
+        <div
+          className="fixed inset-0 z-[160] bg-black/45 p-4 sm:hidden"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowMobileFilters(false);
+            }
+          }}
+        >
+          <div className="ui-modal-surface mx-auto flex h-full max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-neutral-200/80 px-4 py-3">
+              <h3 className="text-base font-semibold text-neutral-900">Filter / Index</h3>
+              <button
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
+                onClick={() => setShowMobileFilters(false)}
+              >
+                x
+              </button>
+            </div>
+            <div className="scrollbar-thin overflow-y-auto p-4">{filterSidebar}</div>
+          </div>
+        </div>
+      )}
 
       {showAddModal && (
         <Modal

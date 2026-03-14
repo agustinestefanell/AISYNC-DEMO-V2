@@ -114,7 +114,7 @@ export function DocumentationTree({
     setOpenState((current) => ({ ...current, [key]: !current[key] }));
 
   return (
-    <div className="ui-surface-subtle px-3 py-3">
+    <div className="ui-surface-subtle scrollbar-thin overflow-auto px-3 py-3">
       <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
         Local Documentation Tree
       </div>

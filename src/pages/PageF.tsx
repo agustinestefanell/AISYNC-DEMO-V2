@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { DividerRail } from '../components/DividerRail';
 import { SecondaryWorkspacePanel, type TeamMessage } from '../components/SecondaryWorkspacePanel';
 import { useApp } from '../context';
@@ -93,6 +93,7 @@ export function PageF() {
   const [workspaceStore, setWorkspaceStore] = useState<SecondaryWorkspaceStore>(
     loadSecondaryWorkspaceStore,
   );
+  const [activeWorkerId, setActiveWorkerId] = useState('');
 
   const teamsState = useMemo(getInitialTeamsMapState, [state.secondaryWorkspace?.teamId]);
   const teamId = state.secondaryWorkspace?.teamId ?? '';
@@ -118,6 +119,17 @@ export function PageF() {
       [teamId]: buildSeedWorkspace(teamLabel, workers),
     }));
   }, [teamId, teamLabel, workers, workspaceStore]);
+
+  useEffect(() => {
+    if (workers.length === 0) {
+      setActiveWorkerId('');
+      return;
+    }
+
+    if (!workers.some((worker) => worker.id === activeWorkerId)) {
+      setActiveWorkerId(workers[0].id);
+    }
+  }, [activeWorkerId, workers]);
 
   const teamWorkspace = workspaceStore[teamId] ?? buildSeedWorkspace(teamLabel, workers);
   const panelWidth =
@@ -153,9 +165,97 @@ export function PageF() {
     });
   };
 
+  const renderWorkerPanel = (worker: TeamsGraphNode, style?: CSSProperties) => {
+    const workerIndex = Math.max(
+      0,
+      workers.findIndex((candidate) => candidate.id === worker.id),
+    );
+    const workerState = teamWorkspace[worker.id] ?? {
+      messages: buildSeedMessages(teamLabel, worker.label, worker.provider),
+      selectedIds: [],
+      draft: '',
+    };
+
+    return (
+      <SecondaryWorkspacePanel
+        teamLabel={teamLabel}
+        workerId={worker.id}
+        workerLabel={worker.label}
+        provider={worker.provider}
+        saveAgent={SAVE_AGENT_ORDER[workerIndex % SAVE_AGENT_ORDER.length]}
+        theme={theme}
+        messages={workerState.messages}
+        selectedIds={workerState.selectedIds}
+        draft={workerState.draft}
+        seedMessages={buildSeedMessages(teamLabel, worker.label, worker.provider)}
+        forwardOptions={workers
+          .filter((candidate) => candidate.id !== worker.id)
+          .map((candidate) => ({
+            id: candidate.id,
+            label: candidate.label,
+          }))}
+        style={style}
+        onSetDraft={(value) =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            draft: value,
+          }))
+        }
+        onToggleSelect={(messageId) =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            selectedIds: current.selectedIds.includes(messageId)
+              ? current.selectedIds.filter((id) => id !== messageId)
+              : [...current.selectedIds, messageId],
+          }))
+        }
+        onClearSelection={() =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            selectedIds: [],
+          }))
+        }
+        onAddUserMessage={(message) =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            messages: [...current.messages, message],
+          }))
+        }
+        onAddAgentReply={(message) =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            messages: [...current.messages, message],
+          }))
+        }
+        onForwardSelection={(targetWorkerId, message) =>
+          updateWorkerState(targetWorkerId, (current) => ({
+            ...current,
+            messages: [...current.messages, message],
+          }))
+        }
+        onResetToSeed={(seedMessages) =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            messages: seedMessages,
+            selectedIds: [],
+            draft: '',
+          }))
+        }
+        onClearChat={() =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            messages: [],
+            selectedIds: [],
+            draft: '',
+          }))
+        }
+      />
+    );
+  };
+
   if (!state.secondaryWorkspace || !teamId || workers.length === 0) {
     return (
-      <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-3 py-3">
+      <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
         <div className="app-frame mx-auto flex h-full min-h-0 w-full max-w-[1600px] items-center justify-center overflow-hidden px-6 py-6">
           <div className="max-w-lg text-center">
             <h1 className="ui-title">Secondary Workspace</h1>
@@ -182,95 +282,39 @@ export function PageF() {
     );
   }
 
-  return (
-    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-3 py-3">
-      <div className="app-frame mx-auto flex h-full min-h-0 w-full max-w-[1600px] overflow-hidden">
-        {workers.map((worker, index) => {
-          const workerState = teamWorkspace[worker.id] ?? {
-            messages: buildSeedMessages(teamLabel, worker.label, worker.provider),
-            selectedIds: [],
-            draft: '',
-          };
+  const activeWorker = workers.find((worker) => worker.id === activeWorkerId) ?? workers[0];
 
-          return (
+  return (
+    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2">
+        <div className="ui-surface scrollbar-thin flex items-center gap-1 overflow-x-auto p-1 lg:hidden">
+          {workers.map((worker) => (
+            <button
+              key={worker.id}
+              className={`min-h-10 shrink-0 rounded-[10px] px-3 text-xs font-medium ${
+                activeWorker?.id === worker.id
+                  ? 'bg-neutral-900 text-white'
+                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+              }`}
+              onClick={() => setActiveWorkerId(worker.id)}
+            >
+              {worker.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="app-frame flex min-h-0 flex-1 overflow-hidden lg:hidden">
+          {renderWorkerPanel(activeWorker)}
+        </div>
+
+        <div className="app-frame hidden min-h-0 flex-1 overflow-hidden lg:flex">
+          {workers.map((worker, index) => (
             <Fragment key={worker.id}>
               {index > 0 && <DividerRail />}
-              <SecondaryWorkspacePanel
-                teamLabel={teamLabel}
-                workerId={worker.id}
-                workerLabel={worker.label}
-                provider={worker.provider}
-                saveAgent={SAVE_AGENT_ORDER[index % SAVE_AGENT_ORDER.length]}
-                theme={theme}
-                messages={workerState.messages}
-                selectedIds={workerState.selectedIds}
-                draft={workerState.draft}
-                seedMessages={buildSeedMessages(teamLabel, worker.label, worker.provider)}
-                forwardOptions={workers
-                  .filter((candidate) => candidate.id !== worker.id)
-                  .map((candidate) => ({
-                    id: candidate.id,
-                    label: candidate.label,
-                  }))}
-                style={{ width: panelWidth }}
-                onSetDraft={(value) =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    draft: value,
-                  }))
-                }
-                onToggleSelect={(messageId) =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    selectedIds: current.selectedIds.includes(messageId)
-                      ? current.selectedIds.filter((id) => id !== messageId)
-                      : [...current.selectedIds, messageId],
-                  }))
-                }
-                onClearSelection={() =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    selectedIds: [],
-                  }))
-                }
-                onAddUserMessage={(message) =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    messages: [...current.messages, message],
-                  }))
-                }
-                onAddAgentReply={(message) =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    messages: [...current.messages, message],
-                  }))
-                }
-                onForwardSelection={(targetWorkerId, message) =>
-                  updateWorkerState(targetWorkerId, (current) => ({
-                    ...current,
-                    messages: [...current.messages, message],
-                  }))
-                }
-                onResetToSeed={(seedMessages) =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    messages: seedMessages,
-                    selectedIds: [],
-                    draft: '',
-                  }))
-                }
-                onClearChat={() =>
-                  updateWorkerState(worker.id, (current) => ({
-                    ...current,
-                    messages: [],
-                    selectedIds: [],
-                    draft: '',
-                  }))
-                }
-              />
+              {renderWorkerPanel(worker, { width: panelWidth })}
             </Fragment>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );

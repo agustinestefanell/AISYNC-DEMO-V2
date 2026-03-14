@@ -262,6 +262,7 @@ export function AgentPanel({
 
   return (
     <div
+      data-agent-panel={agent}
       className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-r last:border-r-0 ${
         isManager
           ? 'ui-manager-panel'
@@ -276,7 +277,7 @@ export function AgentPanel({
             : 'ui-worker-header'
         }`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {editableRole && editingRole ? (
             <input
               className="ui-input h-8 min-h-8 flex-1 px-2 text-xs"
@@ -318,7 +319,7 @@ export function AgentPanel({
           )}
 
           <button className="ui-chat-prompt shrink-0" onClick={openPromptsLibrary}>
-            +Promts
+            + Prompts
           </button>
         </div>
       </div>
@@ -536,7 +537,7 @@ export function AgentPanel({
 
       {showRefreshAction && (
         <div className={`shrink-0 px-3 pb-3 pt-1 ${isManager ? 'ui-manager-section' : 'ui-worker-section'}`}>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <button
               className="ui-button px-3 text-xs text-neutral-700"
               onClick={() => setShowRefreshConfirm(true)}

@@ -34,10 +34,10 @@ export function Modal({
       }}
     >
       <div
-        className={`ui-modal-surface w-full ${width}`}
+        className={`ui-modal-surface flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden ${width}`}
       >
-        <div className="flex items-center justify-between border-b border-neutral-200/80 px-5 py-4">
-          <h3 className="text-[18px] font-semibold tracking-[-0.02em] text-neutral-900">{title}</h3>
+        <div className="flex items-center justify-between border-b border-neutral-200/80 px-4 py-3 sm:px-5 sm:py-4">
+          <h3 className="pr-3 text-base font-semibold tracking-[-0.02em] text-neutral-900 sm:text-[18px]">{title}</h3>
           <button
             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-lg leading-none text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
             onClick={onClose}
@@ -45,7 +45,7 @@ export function Modal({
             x
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="overflow-y-auto p-4 sm:p-5">{children}</div>
       </div>
     </div>
   );

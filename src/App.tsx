@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { AppProvider, useApp } from './context';
 import { TopBar } from './components/TopBar';
 import { BottomNav } from './components/BottomNav';
@@ -7,12 +8,143 @@ import { PageC } from './pages/PageC';
 import { PageD } from './pages/PageD';
 import { PageE } from './pages/PageE';
 import { PageF } from './pages/PageF';
+import type { Page } from './types';
 
-function AppInner() {
-  const { state } = useApp();
+const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F']);
+
+function isVisibleElement(element: Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  const styles = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
 
   return (
-    <div className="app-page-shell flex h-screen min-h-0 min-w-0 flex-col overflow-hidden">
+    styles.display !== 'none' &&
+    styles.visibility !== 'hidden' &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+}
+
+function ResponsiveDiagnostics({
+  enabled,
+  currentPage,
+}: {
+  enabled: boolean;
+  currentPage: Page;
+}) {
+  const [snapshot, setSnapshot] = useState('');
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') {
+      setSnapshot('');
+      return;
+    }
+
+    const collect = () => {
+      const visibleText = (selector: string) =>
+        Array.from(document.querySelectorAll(selector))
+          .filter((element) => isVisibleElement(element))
+          .map((element) => (element.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+
+      const visibleAttr = (selector: string, attribute: string) =>
+        Array.from(document.querySelectorAll(selector))
+          .filter((element) => isVisibleElement(element))
+          .map((element) => element.getAttribute(attribute) || '')
+          .filter(Boolean);
+
+      setSnapshot(
+        JSON.stringify({
+          currentPage,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          docScrollWidth: document.documentElement.scrollWidth,
+          bodyScrollWidth: document.body.scrollWidth,
+          hasHorizontalOverflow:
+            document.documentElement.scrollWidth > window.innerWidth ||
+            document.body.scrollWidth > window.innerWidth,
+          visibleAgentPanels: visibleAttr('[data-agent-panel]', 'data-agent-panel'),
+          visibleTeamPanels: visibleAttr('[data-team-panel]', 'data-team-panel'),
+          workspaceTabs: visibleAttr('[data-workspace-tab]', 'data-workspace-tab'),
+          bottomNavButtons: visibleText('nav button'),
+          docsManagerToggleVisible: visibleText('[data-docs-manager-toggle]').length > 0,
+          docsProjectCardsVisible: visibleText('[data-docs-project-card]').length,
+          calendarListVisible: visibleText('[data-calendar-list]').length > 0,
+          calendarGridVisible: visibleText('[data-calendar-grid]').length > 0,
+          teamsOutputsToggleVisible: visibleText('[data-teams-outputs-toggle]').length > 0,
+          teamsCardsVisible: visibleText('[data-teams-card]').length,
+          promptsFilterButtonVisible:
+            visibleText('[data-prompts-filter-button]').length > 0,
+          promptsSidebarVisible: visibleText('[data-prompts-sidebar]').length > 0,
+        }),
+      );
+    };
+
+    const schedule = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(collect);
+      });
+    };
+
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+    });
+
+    schedule();
+    const timeoutId = window.setTimeout(collect, 400);
+    window.addEventListener('resize', schedule);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [currentPage, enabled]);
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <pre
+      id="responsive-diagnostics"
+      className="pointer-events-none absolute -left-[9999px] top-0 opacity-0"
+      aria-hidden="true"
+    >
+      {snapshot}
+    </pre>
+  );
+}
+
+function AppInner() {
+  const { state, dispatch } = useApp();
+  const diagnosticsParams = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return new URLSearchParams(window.location.search);
+  }, []);
+  const diagnosticsEnabled = diagnosticsParams?.has('responsive_diag') ?? false;
+  const pageOverride = diagnosticsParams?.get('page');
+
+  useEffect(() => {
+    if (!pageOverride || !PAGE_SET.has(pageOverride as Page) || state.currentPage === pageOverride) {
+      return;
+    }
+
+    dispatch({ type: 'SET_PAGE', page: pageOverride as Page });
+  }, [dispatch, pageOverride, state.currentPage]);
+
+  return (
+    <div className="app-page-shell flex h-screen h-dvh min-h-dvh min-w-0 flex-col overflow-hidden">
       <TopBar />
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {state.currentPage === 'A' && <PageA />}
@@ -23,6 +155,7 @@ function AppInner() {
         {state.currentPage === 'F' && <PageF />}
       </main>
       <BottomNav />
+      <ResponsiveDiagnostics enabled={diagnosticsEnabled} currentPage={state.currentPage} />
     </div>
   );
 }

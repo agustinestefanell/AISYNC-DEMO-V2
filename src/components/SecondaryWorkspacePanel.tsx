@@ -218,6 +218,7 @@ export function SecondaryWorkspacePanel({
 
   return (
     <div
+      data-team-panel={workerId}
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-neutral-200 bg-white last:border-r-0"
       style={style}
     >
@@ -429,7 +430,7 @@ export function SecondaryWorkspacePanel({
       </div>
 
       <div className="shrink-0 px-3 pb-3 pt-1">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <button
             className="ui-button px-3 text-xs text-neutral-700"
             onClick={() => setShowRefreshConfirm(true)}

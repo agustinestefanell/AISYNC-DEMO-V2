@@ -22,7 +22,6 @@ import {
   type TeamsMapState,
 } from '../data/teams';
 import type { AIProvider, FileType, SavedFile, TeamFolderItem, TeamsGraphNode } from '../types';
-import { SECONDARY_MANAGER_PANEL_WIDTH } from '../layout';
 
 type TeamsViewMode = 'map' | 'tree';
 
@@ -122,6 +121,7 @@ function TeamCard({
 
   return (
     <div
+      data-teams-card={node.teamId}
       className="rounded-[16px] border p-4 shadow-[var(--shadow-soft)]"
       style={{ borderColor: theme.border, backgroundColor: theme.soft }}
     >
@@ -165,11 +165,11 @@ function TeamCard({
         <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
           Team Workers
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
           {workers.map((worker) => (
             <button
               key={worker.id}
-              className="ui-pill border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
+              className="ui-pill shrink-0 border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
               onClick={onEdit}
             >
               {worker.label}
@@ -293,7 +293,7 @@ function TreeStructureView({
   onEdit: (nodeId: string) => void;
 }) {
   return (
-    <div className="ui-surface p-5">
+    <div className="ui-surface p-4 sm:p-5">
       <div className="mb-5 grid gap-3 md:grid-cols-2">
         <div className="ui-surface-subtle px-4 py-3 text-sm text-neutral-700">
           Tree View is the structural reference for context recovery. It shows how the main project,
@@ -428,6 +428,8 @@ function TreeStructureView({
 
 export function PageD() {
   const { state, dispatch } = useApp();
+  const [showManagerMobile, setShowManagerMobile] = useState(false);
+  const [showOutputsMobile, setShowOutputsMobile] = useState(false);
   const [teamsState, setTeamsState] = useState<TeamsMapState>(getInitialTeamsMapState);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
@@ -625,110 +627,150 @@ export function PageD() {
     dispatch({ type: 'SET_PAGE', page: 'F' });
   };
 
-  return (
-    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-3 py-3">
-      <div className="app-frame mx-auto flex h-full min-h-0 w-full max-w-[1600px] overflow-hidden">
-        <AgentPanel
-          agent="manager"
-          style={{ width: SECONDARY_MANAGER_PANEL_WIDTH, flexShrink: 0 }}
-        />
+  const documentationTreesSection = (
+    <div className="ui-surface px-4 py-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold tracking-[0.16em] text-neutral-900">
+            Estructura documental (outputs)
+          </div>
+          <div className="mt-1 text-sm text-neutral-600">
+            File structure lives separately from the organizational tree above.
+          </div>
+        </div>
+      </div>
 
-        <DividerRail />
+      <div className="grid gap-4 xl:grid-cols-3">
+        {topLevelUnits.map((unit) => {
+          const theme = getTeamTheme(unit.teamId);
+          const counts = countArtifacts(teamsState.foldersByTeam[unit.teamId] ?? []);
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
-          <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-            <section className="flex min-h-full flex-col gap-6 px-6 py-6">
-              <div className="flex flex-wrap items-start justify-between gap-6">
+          return (
+            <div key={unit.teamId} className="ui-surface-subtle p-3" style={{ borderColor: theme.border }}>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h1 className="ui-title">Teams Map</h1>
-                  <p className="mt-2 max-w-3xl text-sm text-neutral-600">
-                    Map View is for direct workspace access. Tree View is for structural orientation
-                    and context recovery when execution detail starts to hide the overall system.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-full border border-neutral-200 bg-white p-1">
-                    {(['map', 'tree'] as TeamsViewMode[]).map((mode) => (
-                      <button
-                        key={mode}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                          viewMode === mode
-                            ? 'bg-neutral-900 text-white'
-                            : 'text-neutral-600 hover:text-neutral-900'
-                        }`}
-                        onClick={() => setViewMode(mode)}
-                      >
-                        {mode === 'map' ? 'Map' : 'Tree'}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="ui-surface px-3 py-2 text-xs text-neutral-600">
-                    Teams: {seniorManagers.length} | Workers: {totalWorkers}
+                  <div className="text-xs font-semibold text-neutral-800">{unit.label}</div>
+                  <div className="mt-1 text-[10px] uppercase tracking-[0.14em]" style={{ color: theme.accent }}>
+                    {counts.conversations} conversations | {counts.documents} documents | {counts.reports} reports
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button className="ui-button ui-button-primary text-white" onClick={handleAddTeam}>
-                  + Add Team
-                </button>
-                <button className="ui-button text-neutral-700" onClick={handleScaleUp}>
-                  Scale Up
-                </button>
-                <button className="ui-button text-neutral-700" onClick={handleScaleDown}>
-                  Scale Down
+                <button
+                  className="ui-button min-h-8 px-3 text-[11px] text-white"
+                  style={{ backgroundColor: theme.ribbon, borderColor: theme.ribbon }}
+                  onClick={() => openTeamWorkspace(unit)}
+                >
+                  Go to Workspace
                 </button>
               </div>
 
-              {generalManager &&
-                (viewMode === 'map' ? (
-                  <div className="grid gap-6">
-                    <div className="ui-surface p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
-                            Main Workspace Access
-                          </div>
-                          <div className="mt-1 text-xl font-semibold text-neutral-900">
-                            {generalManager.label}
-                          </div>
-                          <div className="mt-2 text-sm text-neutral-600">
-                            Main Workspace stays separate from team workspaces. Use the cards below
-                            to jump directly into the right sub-team workspace.
-                          </div>
-                        </div>
+              <TeamTree
+                items={teamsState.foldersByTeam[unit.teamId] ?? []}
+                onOpenFile={(item) => openFolderFile(item, unit.teamId, unit.label)}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
-                        <div className="flex flex-wrap gap-2">
-                          <span className="ui-pill">{getProviderDisplayName(generalManager.provider)}</span>
-                          <button
-                            className="ui-button ui-button-primary text-white"
-                            onClick={() => openMainWorkspace(generalManager)}
-                          >
-                            Go to Main Workspace
-                          </button>
-                          <button className="ui-button text-neutral-700" onClick={() => setSelectedNodeId(generalManager.id)}>
-                            Edit
-                          </button>
-                        </div>
+  const teamsContent = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
+      <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+        <section className="flex min-h-full flex-col gap-4 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6">
+          <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
+            <div>
+              <h1 className="ui-title">Teams Map</h1>
+              <p className="mt-2 max-w-3xl text-sm text-neutral-600">
+                Map View is for direct workspace access. Tree View is for structural orientation
+                and context recovery when execution detail starts to hide the overall system.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-full border border-neutral-200 bg-white p-1">
+                {(['map', 'tree'] as TeamsViewMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                      viewMode === mode
+                        ? 'bg-neutral-900 text-white'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                    onClick={() => setViewMode(mode)}
+                  >
+                    {mode === 'map' ? 'Map' : 'Tree'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="ui-surface px-3 py-2 text-xs text-neutral-600">
+                Teams: {seniorManagers.length} | Workers: {totalWorkers}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button className="ui-button ui-button-primary text-white" onClick={handleAddTeam}>
+              + Add Team
+            </button>
+            <button className="ui-button text-neutral-700" onClick={handleScaleUp}>
+              Scale Up
+            </button>
+            <button className="ui-button text-neutral-700" onClick={handleScaleDown}>
+              Scale Down
+            </button>
+          </div>
+
+          {generalManager &&
+            (viewMode === 'map' ? (
+              <div className="grid gap-4 sm:gap-6">
+                <div className="ui-surface p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                        Main Workspace Access
+                      </div>
+                      <div className="mt-1 text-xl font-semibold text-neutral-900">
+                        {generalManager.label}
+                      </div>
+                      <div className="mt-2 text-sm text-neutral-600">
+                        Main Workspace stays separate from team workspaces. Use the cards below
+                        to jump directly into the right sub-team workspace.
                       </div>
                     </div>
 
-                    <div className="grid gap-5 xl:grid-cols-3">
-                      {topLevelUnits.map((unit) => (
-                        <TeamCard
-                          key={unit.id}
-                          node={unit}
-                          workers={workersByTeam[unit.teamId] ?? []}
-                          counts={countArtifacts(teamsState.foldersByTeam[unit.teamId] ?? [])}
-                          onEdit={() => setSelectedNodeId(unit.id)}
-                          onOpenWorkspace={() => openTeamWorkspace(unit)}
-                        />
-                      ))}
+                    <div className="flex flex-wrap gap-2">
+                      <span className="ui-pill">{getProviderDisplayName(generalManager.provider)}</span>
+                      <button
+                        className="ui-button ui-button-primary text-white"
+                        onClick={() => openMainWorkspace(generalManager)}
+                      >
+                        Go to Main Workspace
+                      </button>
+                      <button className="ui-button text-neutral-700" onClick={() => setSelectedNodeId(generalManager.id)}>
+                        Edit
+                      </button>
                     </div>
                   </div>
-                ) : (
+                </div>
+
+                <div className="grid gap-4 sm:gap-5 xl:grid-cols-3">
+                  {topLevelUnits.map((unit) => (
+                    <TeamCard
+                      key={unit.id}
+                      node={unit}
+                      workers={workersByTeam[unit.teamId] ?? []}
+                      counts={countArtifacts(teamsState.foldersByTeam[unit.teamId] ?? [])}
+                      onEdit={() => setSelectedNodeId(unit.id)}
+                      onOpenWorkspace={() => openTeamWorkspace(unit)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="min-w-0 md:min-w-[820px] lg:min-w-0">
                   <TreeStructureView
                     projectName={state.projectName}
                     generalManager={generalManager}
@@ -738,54 +780,58 @@ export function PageD() {
                     onOpenWorkspace={openTeamWorkspace}
                     onEdit={setSelectedNodeId}
                   />
-                ))}
-
-              <div className="ui-surface px-4 py-4">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold tracking-[0.16em] text-neutral-900">
-                      Documentation Trees
-                    </div>
-                    <div className="mt-1 text-sm text-neutral-600">
-                      File structure lives separately from the organizational tree above.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-3">
-                  {topLevelUnits.map((unit) => {
-                    const theme = getTeamTheme(unit.teamId);
-                    const counts = countArtifacts(teamsState.foldersByTeam[unit.teamId] ?? []);
-
-                    return (
-                      <div key={unit.teamId} className="ui-surface-subtle p-3" style={{ borderColor: theme.border }}>
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-semibold text-neutral-800">{unit.label}</div>
-                            <div className="mt-1 text-[10px] uppercase tracking-[0.14em]" style={{ color: theme.accent }}>
-                              {counts.conversations} conversations | {counts.documents} documents | {counts.reports} reports
-                            </div>
-                          </div>
-                          <button
-                            className="ui-button min-h-8 px-3 text-[11px] text-white"
-                            style={{ backgroundColor: theme.ribbon, borderColor: theme.ribbon }}
-                            onClick={() => openTeamWorkspace(unit)}
-                          >
-                            Go to Workspace
-                          </button>
-                        </div>
-
-                        <TeamTree
-                          items={teamsState.foldersByTeam[unit.teamId] ?? []}
-                          onOpenFile={(item) => openFolderFile(item, unit.teamId, unit.label)}
-                        />
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
-            </section>
+            ))}
+
+          <div className="sm:hidden">
+            <button
+              data-teams-outputs-toggle
+              className={`ui-button w-full justify-between px-4 text-left text-sm ${
+                showOutputsMobile ? 'ui-button-primary text-white' : 'text-neutral-700'
+              }`}
+              onClick={() => setShowOutputsMobile((value) => !value)}
+            >
+              {showOutputsMobile ? 'Hide Outputs Strip' : 'Show Outputs Strip'}
+            </button>
           </div>
+
+          {showOutputsMobile && <div className="sm:hidden">{documentationTreesSection}</div>}
+          <div className="hidden sm:block">{documentationTreesSection}</div>
+        </section>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2">
+        <div className="ui-surface flex items-center justify-between gap-3 px-3 py-2 sm:hidden">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            Manager Panel
+          </div>
+          <button
+            className="ui-button min-h-9 px-3 text-xs text-neutral-700"
+            onClick={() => setShowManagerMobile((value) => !value)}
+          >
+            {showManagerMobile ? 'Hide Manager' : 'Show Manager'}
+          </button>
+        </div>
+
+        {showManagerMobile && (
+          <div className="app-frame flex h-[46dvh] min-h-0 overflow-hidden sm:hidden">
+            <AgentPanel agent="manager" />
+          </div>
+        )}
+
+        <div className="app-frame flex min-h-0 flex-1 overflow-hidden sm:hidden">
+          {teamsContent}
+        </div>
+
+        <div className="app-frame hidden min-h-0 flex-1 overflow-hidden sm:flex">
+          <AgentPanel agent="manager" className="w-[280px] shrink-0 md:w-[320px] lg:w-[432px]" />
+          <DividerRail />
+          {teamsContent}
         </div>
       </div>
 
