@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppProvider, useApp } from './context';
 import { TopBar } from './components/TopBar';
 import { BottomNav } from './components/BottomNav';
@@ -8,9 +8,11 @@ import { PageC } from './pages/PageC';
 import { PageD } from './pages/PageD';
 import { PageE } from './pages/PageE';
 import { PageF } from './pages/PageF';
+import { PageG } from './pages/PageG';
+import { PageH } from './pages/PageH';
 import type { Page } from './types';
 
-const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F']);
+const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
 
 function isVisibleElement(element: Element | null): element is HTMLElement {
   if (!(element instanceof HTMLElement)) {
@@ -142,6 +144,7 @@ function ResponsiveDiagnostics({
 
 function AppInner() {
   const { state, dispatch } = useApp();
+  const pageOverrideAppliedRef = useRef(false);
   const diagnosticsParams = useMemo(() => {
     if (typeof window === 'undefined') {
       return null;
@@ -153,6 +156,12 @@ function AppInner() {
   const pageOverride = diagnosticsParams?.get('page');
 
   useEffect(() => {
+    if (pageOverrideAppliedRef.current) {
+      return;
+    }
+
+    pageOverrideAppliedRef.current = true;
+
     if (!pageOverride || !PAGE_SET.has(pageOverride as Page) || state.currentPage === pageOverride) {
       return;
     }
@@ -170,6 +179,8 @@ function AppInner() {
         {state.currentPage === 'D' && <PageD />}
         {state.currentPage === 'E' && <PageE />}
         {state.currentPage === 'F' && <PageF />}
+        {state.currentPage === 'G' && <PageG />}
+        {state.currentPage === 'H' && <PageH />}
       </main>
       <BottomNav />
       <ResponsiveDiagnostics enabled={diagnosticsEnabled} currentPage={state.currentPage} />

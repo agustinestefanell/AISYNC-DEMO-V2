@@ -1,20 +1,34 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { DividerRail } from '../components/DividerRail';
 import { SecondaryWorkspacePanel, type TeamMessage } from '../components/SecondaryWorkspacePanel';
+import {
+  TeamSubManagerPanel,
+  type TeamSubManagerForwardOption,
+} from '../components/TeamSubManagerPanel';
 import { useApp } from '../context';
-import { getInitialTeamsMapState, getTeamTheme, getWorkersByTeam } from '../data/teams';
+import {
+  consumeSecondaryWorkspaceFocusThread,
+  SECONDARY_WORKSPACE_STORAGE_KEY,
+  TEAM_MANAGER_THREAD_ID,
+  getSecondaryWorkspaceStore,
+  type WorkspaceThreadState,
+} from '../crossVerificationRouting';
+import {
+  CROSS_VERIFICATION_TEAM_ID,
+  getInitialTeamsMapState,
+  getTeamTheme,
+  getWorkersByTeam,
+} from '../data/teams';
+import {
+  getTeamWorkspaceLaunchIdFromLocation,
+  readTeamWorkspaceLaunch,
+} from '../teamWorkspaceLaunch';
 import type { AIProvider, AgentRole, TeamsGraphNode } from '../types';
+import { createWorkspaceVersion, createWorkspaceVersionEvent } from '../versioning';
 
-const SECONDARY_WORKSPACE_STORAGE_KEY = 'aisync_secondary_workspaces_v1';
 const SAVE_AGENT_ORDER: AgentRole[] = ['worker1', 'worker2', 'manager'];
 
-interface WorkerThreadState {
-  messages: TeamMessage[];
-  selectedIds: string[];
-  draft: string;
-}
-
-type SecondaryWorkspaceStore = Record<string, Record<string, WorkerThreadState>>;
+type SecondaryWorkspaceStore = Record<string, Record<string, WorkspaceThreadState>>;
 
 function createMessageId() {
   return `team_seed_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -24,8 +38,46 @@ function getProviderLabel(provider: AIProvider) {
   return provider === 'Google' ? 'Gemini' : provider;
 }
 
-function buildSeedMessages(teamLabel: string, workerLabel: string, provider: AIProvider): TeamMessage[] {
+function buildSeedMessages(
+  teamId: string,
+  teamLabel: string,
+  workerLabel: string,
+  provider: AIProvider,
+): TeamMessage[] {
   const providerLabel = getProviderLabel(provider);
+
+  if (teamId === CROSS_VERIFICATION_TEAM_ID) {
+    return [
+      {
+        id: createMessageId(),
+        role: 'user',
+        content: 'Compare this question independently and preserve any uncertainty in your answer.',
+        timestamp: '09:10',
+        senderLabel: 'User',
+      },
+      {
+        id: createMessageId(),
+        role: 'agent',
+        content: `${workerLabel} is evaluating the claim independently and will return a comparable answer with uncertainty called out explicitly.`,
+        timestamp: '09:11',
+        senderLabel: providerLabel,
+      },
+      {
+        id: createMessageId(),
+        role: 'user',
+        content: 'Condense your position so the manager can compare it against the other workers.',
+        timestamp: '09:12',
+        senderLabel: 'User',
+      },
+      {
+        id: createMessageId(),
+        role: 'agent',
+        content: `Next action: ${workerLabel} returns a comparison-ready answer, highlights what remains uncertain, and avoids forcing consensus too early.`,
+        timestamp: '09:13',
+        senderLabel: providerLabel,
+      },
+    ];
+  }
 
   return [
     {
@@ -59,41 +111,54 @@ function buildSeedMessages(teamLabel: string, workerLabel: string, provider: AIP
   ];
 }
 
-function buildSeedWorkspace(teamLabel: string, workers: TeamsGraphNode[]) {
-  return workers.reduce<Record<string, WorkerThreadState>>((accumulator, worker) => {
-    accumulator[worker.id] = {
-      messages: buildSeedMessages(teamLabel, worker.label, worker.provider),
-      selectedIds: [],
-      draft: '',
-    };
-    return accumulator;
-  }, {});
+function buildTeamManagerSeedMessages(teamLabel: string): TeamMessage[] {
+  return [
+    {
+      id: createMessageId(),
+      role: 'user',
+      content: `Review the current ${teamLabel} queue and prepare the next reviewed handoff.`,
+      timestamp: '09:09',
+      senderLabel: 'User',
+    },
+    {
+      id: createMessageId(),
+      role: 'agent',
+      content: `${teamLabel} Sub-Manager is holding the active reviewed thread and can route work back into the team circuit when needed.`,
+      timestamp: '09:10',
+      senderLabel: 'Gemini',
+    },
+  ];
 }
 
-function loadSecondaryWorkspaceStore() {
-  if (typeof window === 'undefined') {
-    return {} as SecondaryWorkspaceStore;
-  }
-
-  try {
-    const saved = window.localStorage.getItem(SECONDARY_WORKSPACE_STORAGE_KEY);
-    if (!saved) {
-      return {};
-    }
-
-    const parsed = JSON.parse(saved) as SecondaryWorkspaceStore;
-    return parsed ?? {};
-  } catch {
-    return {};
-  }
+function buildSeedWorkspace(teamId: string, teamLabel: string, workers: TeamsGraphNode[]) {
+  return workers.reduce<Record<string, WorkspaceThreadState>>((accumulator, worker) => {
+    accumulator[worker.id] = {
+      messages: buildSeedMessages(teamId, teamLabel, worker.label, worker.provider),
+      selectedIds: [],
+      draft: '',
+      locked: false,
+      versions: [],
+    };
+    return accumulator;
+  }, {
+    [TEAM_MANAGER_THREAD_ID]: {
+      messages: buildTeamManagerSeedMessages(teamLabel),
+      selectedIds: [],
+      draft: '',
+      locked: false,
+      versions: [],
+    },
+  });
 }
 
 export function PageF() {
   const { state, dispatch } = useApp();
   const [workspaceStore, setWorkspaceStore] = useState<SecondaryWorkspaceStore>(
-    loadSecondaryWorkspaceStore,
+    getSecondaryWorkspaceStore,
   );
-  const [activeWorkerId, setActiveWorkerId] = useState('');
+  const launchId = useMemo(getTeamWorkspaceLaunchIdFromLocation, []);
+  const [launchHydrated, setLaunchHydrated] = useState(false);
+  const [activePanelId, setActivePanelId] = useState('');
 
   const teamsState = useMemo(getInitialTeamsMapState, [state.secondaryWorkspace?.teamId]);
   const teamId = state.secondaryWorkspace?.teamId ?? '';
@@ -101,6 +166,24 @@ export function PageF() {
   const workersByTeam = useMemo(() => getWorkersByTeam(teamsState.teamsGraph), [teamsState.teamsGraph]);
   const workers = workersByTeam[teamId] ?? [];
   const theme = getTeamTheme(teamId);
+  const isCrossVerificationTeam = teamId === CROSS_VERIFICATION_TEAM_ID;
+  const shouldShowTeamManager = !isCrossVerificationTeam;
+
+  useEffect(() => {
+    if (!launchId || launchHydrated) {
+      return;
+    }
+
+    const launch = readTeamWorkspaceLaunch(launchId);
+    if (launch?.workspace) {
+      dispatch({
+        type: 'SET_SECONDARY_WORKSPACE',
+        workspace: launch.workspace,
+      });
+    }
+
+    setLaunchHydrated(true);
+  }, [dispatch, launchHydrated, launchId]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -116,42 +199,91 @@ export function PageF() {
 
     setWorkspaceStore((current) => ({
       ...current,
-      [teamId]: buildSeedWorkspace(teamLabel, workers),
+      [teamId]: buildSeedWorkspace(teamId, teamLabel, workers),
     }));
   }, [teamId, teamLabel, workers, workspaceStore]);
 
   useEffect(() => {
     if (workers.length === 0) {
-      setActiveWorkerId('');
+      setActivePanelId('');
       return;
     }
 
-    if (!workers.some((worker) => worker.id === activeWorkerId)) {
-      setActiveWorkerId(workers[0].id);
-    }
-  }, [activeWorkerId, workers]);
+    const availablePanelIds = shouldShowTeamManager
+      ? [TEAM_MANAGER_THREAD_ID, ...workers.map((worker) => worker.id)]
+      : workers.map((worker) => worker.id);
+    const resumeThreadId = teamId ? consumeSecondaryWorkspaceFocusThread(teamId) : null;
 
-  const teamWorkspace = workspaceStore[teamId] ?? buildSeedWorkspace(teamLabel, workers);
+    if (resumeThreadId && availablePanelIds.includes(resumeThreadId)) {
+      setActivePanelId(resumeThreadId);
+      return;
+    }
+
+    if (!availablePanelIds.includes(activePanelId)) {
+      setActivePanelId(availablePanelIds[0] ?? '');
+    }
+  }, [activePanelId, shouldShowTeamManager, teamId, workers]);
+
+  useEffect(() => {
+    const syncWorkspaceStore = () => {
+      const persisted = getSecondaryWorkspaceStore();
+      setWorkspaceStore((current) =>
+        Object.keys(persisted).length === 0 ? current : persisted,
+      );
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== SECONDARY_WORKSPACE_STORAGE_KEY) {
+        return;
+      }
+
+      syncWorkspaceStore();
+    };
+
+    window.addEventListener('focus', syncWorkspaceStore);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('focus', syncWorkspaceStore);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const teamWorkspace = workspaceStore[teamId] ?? buildSeedWorkspace(teamId, teamLabel, workers);
+  const teamManagerState = teamWorkspace[TEAM_MANAGER_THREAD_ID] ?? {
+    messages: buildTeamManagerSeedMessages(teamLabel),
+    selectedIds: [],
+    draft: '',
+    locked: false,
+    versions: [],
+  };
+  const panelCount = shouldShowTeamManager ? workers.length + 1 : workers.length;
   const panelWidth =
-    workers.length > 1
-      ? `calc((100% - ${(workers.length - 1) * 16}px) / ${workers.length})`
+    panelCount > 1
+      ? `calc((100% - ${(panelCount - 1) * 16}px) / ${panelCount})`
       : '100%';
 
   const updateWorkerState = (
-    workerId: string,
-    updater: (current: WorkerThreadState) => WorkerThreadState,
+    threadId: string,
+    updater: (current: WorkspaceThreadState) => WorkspaceThreadState,
   ) => {
     setWorkspaceStore((current) => {
-      const currentTeamState = current[teamId] ?? buildSeedWorkspace(teamLabel, workers);
+      const currentTeamState = current[teamId] ?? buildSeedWorkspace(teamId, teamLabel, workers);
       const nextWorkerState = updater(
-        currentTeamState[workerId] ?? {
-          messages: buildSeedMessages(
-            teamLabel,
-            workers.find((worker) => worker.id === workerId)?.label ?? workerId,
-            workers.find((worker) => worker.id === workerId)?.provider ?? 'OpenAI',
-          ),
+        currentTeamState[threadId] ?? {
+          messages:
+            threadId === TEAM_MANAGER_THREAD_ID
+              ? buildTeamManagerSeedMessages(teamLabel)
+              : buildSeedMessages(
+                  teamId,
+                  teamLabel,
+                  workers.find((worker) => worker.id === threadId)?.label ?? threadId,
+                  workers.find((worker) => worker.id === threadId)?.provider ?? 'OpenAI',
+                ),
           selectedIds: [],
           draft: '',
+          locked: false,
+          versions: [],
         },
       );
 
@@ -159,7 +291,7 @@ export function PageF() {
         ...current,
         [teamId]: {
           ...currentTeamState,
-          [workerId]: nextWorkerState,
+          [threadId]: nextWorkerState,
         },
       };
     });
@@ -171,13 +303,16 @@ export function PageF() {
       workers.findIndex((candidate) => candidate.id === worker.id),
     );
     const workerState = teamWorkspace[worker.id] ?? {
-      messages: buildSeedMessages(teamLabel, worker.label, worker.provider),
+      messages: buildSeedMessages(teamId, teamLabel, worker.label, worker.provider),
       selectedIds: [],
       draft: '',
+      locked: false,
+      versions: [],
     };
 
     return (
       <SecondaryWorkspacePanel
+        teamId={teamId}
         teamLabel={teamLabel}
         workerId={worker.id}
         workerLabel={worker.label}
@@ -187,7 +322,9 @@ export function PageF() {
         messages={workerState.messages}
         selectedIds={workerState.selectedIds}
         draft={workerState.draft}
-        seedMessages={buildSeedMessages(teamLabel, worker.label, worker.provider)}
+        documentLocked={workerState.locked}
+        workspaceVersions={workerState.versions}
+        seedMessages={buildSeedMessages(teamId, teamLabel, worker.label, worker.provider)}
         forwardOptions={workers
           .filter((candidate) => candidate.id !== worker.id)
           .map((candidate) => ({
@@ -200,6 +337,47 @@ export function PageF() {
             ...current,
             draft: value,
           }))
+        }
+        onToggleDocumentLock={() =>
+          updateWorkerState(worker.id, (current) => ({
+            ...current,
+            locked: !current.locked,
+          }))
+        }
+        onSaveVersion={() =>
+          updateWorkerState(worker.id, (current) => {
+            const version = createWorkspaceVersion(
+              current.messages,
+              current.draft,
+              current.locked,
+              current.versions,
+              current.locked ? 'Locked checkpoint' : undefined,
+            );
+
+            dispatch({
+              type: 'ADD_CALENDAR_EVENT',
+              event: createWorkspaceVersionEvent({
+                version,
+                projectId: state.projects[0]?.id ?? 'project_1',
+                agent: SAVE_AGENT_ORDER[workerIndex % SAVE_AGENT_ORDER.length],
+                userLabel: state.userName,
+                sourceLabel: `${teamLabel} | ${worker.label}`,
+                teamId,
+                teamLabel,
+                threadLabel: worker.label,
+                actorLabel: worker.label,
+                managerLabel: `${teamLabel} Sub-Manager`,
+                workerLabel: worker.label,
+                versionSource: 'team',
+                versionThreadId: worker.id,
+              }),
+            });
+
+            return {
+              ...current,
+              versions: [...current.versions, version],
+            };
+          })
         }
         onToggleSelect={(messageId) =>
           updateWorkerState(worker.id, (current) => ({
@@ -253,6 +431,160 @@ export function PageF() {
     );
   };
 
+  const renderManagerPanel = (style?: CSSProperties) => {
+    const forwardOptions: TeamSubManagerForwardOption[] = [
+      ...workers.map((worker) => ({
+        id: worker.id,
+        label: worker.label,
+        workerId: worker.id,
+      })),
+      {
+        id: 'main_workspace:manager',
+        label: 'AI General Manager',
+        agentRole: 'manager',
+      },
+    ];
+
+    return (
+      <TeamSubManagerPanel
+        teamId={teamId}
+        teamLabel={teamLabel}
+        theme={theme}
+        messages={teamManagerState.messages}
+        selectedIds={teamManagerState.selectedIds}
+        draft={teamManagerState.draft}
+        documentLocked={teamManagerState.locked}
+        workspaceVersions={teamManagerState.versions}
+        seedMessages={buildTeamManagerSeedMessages(teamLabel)}
+        forwardOptions={forwardOptions}
+        style={style}
+        onSetDraft={(value) =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            draft: value,
+          }))
+        }
+        onToggleDocumentLock={() =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            locked: !current.locked,
+          }))
+        }
+        onSaveVersion={() =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => {
+            const version = createWorkspaceVersion(
+              current.messages,
+              current.draft,
+              current.locked,
+              current.versions,
+              current.locked ? 'Locked checkpoint' : undefined,
+            );
+
+            dispatch({
+              type: 'ADD_CALENDAR_EVENT',
+              event: createWorkspaceVersionEvent({
+                version,
+                projectId: state.projects[0]?.id ?? 'project_1',
+                agent: 'manager',
+                userLabel: state.userName,
+                sourceLabel: `${teamLabel} | ${teamLabel} Sub-Manager`,
+                teamId,
+                teamLabel,
+                threadLabel: `${teamLabel} Sub-Manager`,
+                actorLabel: `${teamLabel} Sub-Manager`,
+                managerLabel: `${teamLabel} Sub-Manager`,
+                versionSource: 'team',
+                versionThreadId: TEAM_MANAGER_THREAD_ID,
+              }),
+            });
+
+            return {
+              ...current,
+              versions: [...current.versions, version],
+            };
+          })
+        }
+        onToggleSelect={(messageId) =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            selectedIds: current.selectedIds.includes(messageId)
+              ? current.selectedIds.filter((id) => id !== messageId)
+              : [...current.selectedIds, messageId],
+          }))
+        }
+        onClearSelection={() =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            selectedIds: [],
+          }))
+        }
+        onAddUserMessage={(message) =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            messages: [...current.messages, message],
+          }))
+        }
+        onAddAgentReply={(message) =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            messages: [...current.messages, message],
+          }))
+        }
+        onForwardSelection={(target, message) => {
+          if (target.workerId) {
+            updateWorkerState(target.workerId, (current) => ({
+              ...current,
+              messages: [...current.messages, message],
+            }));
+            return;
+          }
+
+          if (target.agentRole) {
+            dispatch({
+              type: 'ADD_MESSAGE',
+              agent: target.agentRole,
+              message: {
+                ...message,
+                agent: target.agentRole,
+              },
+            });
+          }
+        }}
+        onResetToSeed={(seedMessages) =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            messages: seedMessages,
+            selectedIds: [],
+            draft: '',
+          }))
+        }
+        onClearChat={() =>
+          updateWorkerState(TEAM_MANAGER_THREAD_ID, (current) => ({
+            ...current,
+            messages: [],
+            selectedIds: [],
+            draft: '',
+          }))
+        }
+      />
+    );
+  };
+
+  if (launchId && (!launchHydrated || !state.secondaryWorkspace)) {
+    return (
+      <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
+        <div className="app-frame mx-auto flex h-full min-h-0 w-full max-w-[1600px] items-center justify-center overflow-hidden px-6 py-6">
+          <div className="max-w-lg text-center">
+            <h1 className="ui-title">Loading Team Workspace</h1>
+            <p className="mt-3 text-sm text-neutral-600">
+              Restoring the selected team workspace in this new window.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!state.secondaryWorkspace || !teamId || workers.length === 0) {
     return (
       <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
@@ -282,12 +614,41 @@ export function PageF() {
     );
   }
 
-  const activeWorker = workers.find((worker) => worker.id === activeWorkerId) ?? workers[0];
+  const activeWorker = workers.find((worker) => worker.id === activePanelId) ?? workers[0];
 
   return (
     <div className="app-page-shell h-full min-h-0 min-w-0 overflow-hidden px-2 py-2 sm:px-3 sm:py-3">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2">
+        {isCrossVerificationTeam && (
+          <div
+            className="ui-surface-subtle px-4 py-3"
+            style={{ borderColor: theme.border, backgroundColor: theme.soft }}
+          >
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+              style={{ color: theme.accent }}
+            >
+              Cross Verification Manager
+            </div>
+            <div className="mt-1 text-sm text-neutral-900">
+              Enter the question, topic, or claim you want to cross-verify.
+            </div>
+          </div>
+        )}
+
         <div className="ui-surface ui-workspace-tabs scrollbar-thin flex items-center gap-1 overflow-x-auto p-1 lg:hidden">
+          {shouldShowTeamManager && (
+            <button
+              className={`ui-workspace-tab min-h-10 shrink-0 rounded-[10px] px-3 text-xs font-medium ${
+                activePanelId === TEAM_MANAGER_THREAD_ID
+                  ? 'bg-neutral-900 text-white'
+                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+              }`}
+              onClick={() => setActivePanelId(TEAM_MANAGER_THREAD_ID)}
+            >
+              Sub-Manager
+            </button>
+          )}
           {workers.map((worker) => (
             <button
               key={worker.id}
@@ -296,7 +657,7 @@ export function PageF() {
                   ? 'bg-neutral-900 text-white'
                   : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
               }`}
-              onClick={() => setActiveWorkerId(worker.id)}
+              onClick={() => setActivePanelId(worker.id)}
             >
               {worker.label}
             </button>
@@ -304,13 +665,18 @@ export function PageF() {
         </div>
 
         <div className="app-frame flex min-h-0 flex-1 overflow-hidden lg:hidden">
-          {renderWorkerPanel(activeWorker)}
+          {activePanelId === TEAM_MANAGER_THREAD_ID && shouldShowTeamManager
+            ? renderManagerPanel()
+            : renderWorkerPanel(activeWorker)}
         </div>
 
         <div className="app-frame hidden min-h-0 flex-1 overflow-hidden lg:flex">
+          {shouldShowTeamManager && (
+            <>{renderManagerPanel({ width: panelWidth })}</>
+          )}
           {workers.map((worker, index) => (
             <Fragment key={worker.id}>
-              {index > 0 && <DividerRail />}
+              {(index > 0 || shouldShowTeamManager) && <DividerRail />}
               {renderWorkerPanel(worker, { width: panelWidth })}
             </Fragment>
           ))}

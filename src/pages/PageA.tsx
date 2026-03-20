@@ -31,6 +31,7 @@ export function PageA() {
   const renderPanel = (agent: AgentRole) => (
     <AgentPanel
       agent={agent}
+      auditSourcePage="A"
       editableRole={agent !== 'manager'}
       className={state.workspaceFocusAgent === agent ? focusClass : ''}
     />
@@ -85,12 +86,14 @@ export function PageA() {
         <div className="app-frame app-short-landscape-hide hidden min-h-0 flex-1 overflow-hidden sm:flex lg:hidden">
           <AgentPanel
             agent="manager"
+            auditSourcePage="A"
             className={state.workspaceFocusAgent === 'manager' ? focusClass : ''}
             style={{ width: 'calc((100% - 16px) / 2)' }}
           />
           <DividerRail />
           <AgentPanel
             agent={tabletWorker}
+            auditSourcePage="A"
             editableRole
             className={state.workspaceFocusAgent === tabletWorker ? focusClass : ''}
             style={{ width: 'calc((100% - 16px) / 2)' }}
@@ -100,12 +103,14 @@ export function PageA() {
         <div className="app-frame hidden min-h-0 flex-1 overflow-hidden lg:flex">
           <AgentPanel
             agent="manager"
+            auditSourcePage="A"
             className={state.workspaceFocusAgent === 'manager' ? focusClass : ''}
             style={{ width: panelWidth }}
           />
           <DividerRail />
           <AgentPanel
             agent="worker1"
+            auditSourcePage="A"
             editableRole
             className={state.workspaceFocusAgent === 'worker1' ? focusClass : ''}
             style={{ width: panelWidth }}
@@ -113,6 +118,7 @@ export function PageA() {
           <DividerRail />
           <AgentPanel
             agent="worker2"
+            auditSourcePage="A"
             editableRole
             className={state.workspaceFocusAgent === 'worker2' ? focusClass : ''}
             style={{ width: panelWidth }}

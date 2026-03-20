@@ -56,6 +56,20 @@ function buildPublicPrompts(): PromptItem[] {
       updatedAt: '2026-03-06T10:20:00.000Z',
     },
     {
+      id: 'public_eo_ops_002',
+      visibility: 'public',
+      collection: 'AISync Workflows',
+      code: 'EO-OPS-002',
+      title: 'Cross Verification Manager - Demo Note / Prompt Reference',
+      description:
+        'Reference note for coordinating cross-verification without collapsing disagreement too early.',
+      tags: ['cross-verification', 'manager', 'comparison', 'human-review'],
+      promptText:
+        'Cross Verification Manager - Role\n\n- Receive one user question, topic, or claim.\n- Dispatch the same query to all assigned Workers.\n- Compare the responses without assuming consensus equals correctness.\n- Highlight where the models agree.\n- Highlight where they differ.\n- Identify what remains uncertain.\n- Indicate what should be verified externally.\n- Propose a final synthesis only after comparison.\n- Wait for human confirmation when needed before closing the process.\n\nThe Manager should not act as a simple auto-forwarder. Its role is to structure comparison, preserve divergence, surface uncertainty, and help the user reach a traceable final synthesis under human review.',
+      usageCount: 6,
+      updatedAt: '2026-03-06T19:10:00.000Z',
+    },
+    {
       id: 'public_brief_start_001',
       visibility: 'public',
       collection: 'Start Here',

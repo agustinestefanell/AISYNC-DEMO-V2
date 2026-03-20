@@ -104,7 +104,7 @@ export function SaveBackupModal({
         </label>
 
         <label className="grid gap-1">
-          <span className="ui-label">Calendar date</span>
+          <span className="ui-label">Audit Log date</span>
           <input
             className="ui-input text-xs"
             type="date"

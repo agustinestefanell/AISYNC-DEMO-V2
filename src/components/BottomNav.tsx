@@ -1,19 +1,43 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context';
-import type { AIProvider, Page } from '../types';
-import { Modal } from './Modal';
-import { Toast } from './Toast';
+import { CROSS_VERIFICATION_TEAM_ID, getTeamTheme } from '../data/teams';
+import { getBottomNavPageLabel } from '../pageLabels';
+import type { Page, SecondaryWorkspaceTarget } from '../types';
 
-const PAGE_ITEMS: Array<{ label: string; shortLabel: string; page: Page }> = [
-  { label: 'Main Workspace', shortLabel: 'Main', page: 'A' },
-  { label: 'Documentation Mode', shortLabel: 'Docs', page: 'B' },
-  { label: 'Traceability Calendar', shortLabel: 'Cal', page: 'C' },
-  { label: 'Teams Map', shortLabel: 'Teams', page: 'D' },
-  { label: 'Prompts Library', shortLabel: 'Prompts', page: 'E' },
+type NavItem = {
+  key: string;
+  label: string;
+  shortLabel: string;
+  page: Page;
+  workspace?: SecondaryWorkspaceTarget;
+};
+
+const PAGE_ITEMS: NavItem[] = [
+  { key: 'A', label: 'Main Workspace', shortLabel: 'Main', page: 'A' },
+  {
+    key: 'cross_verification',
+    label: 'Cross Verification',
+    shortLabel: 'Cross',
+    page: 'G',
+    workspace: {
+      teamId: CROSS_VERIFICATION_TEAM_ID,
+      label: 'Cross Verification',
+      color: getTeamTheme(CROSS_VERIFICATION_TEAM_ID).ribbon,
+    },
+  },
+  { key: 'B', label: 'Documentation Mode', shortLabel: 'Docs', page: 'B' },
+  { key: 'C', label: 'Audit Log', shortLabel: 'Log', page: 'C' },
+  { key: 'D', label: 'Teams Map', shortLabel: 'Teams', page: 'D' },
+  { key: 'E', label: 'Prompts Library', shortLabel: 'Prompts', page: 'E' },
 ];
 
 const SETTINGS_ITEMS = ['Project Settings', 'Agent Labels', 'Theme Preset'];
-const ADVANCED_ITEMS = ['Session Inspector', 'Forwarding Audit', 'Backup Notes'];
+const ADVANCED_ITEMS: Array<{ label: string; page?: Page }> = [
+  { label: 'Version History', page: 'H' },
+  { label: 'Session Inspector' },
+  { label: 'Forward Review' },
+  { label: 'Backup Notes' },
+];
 
 function getShouldUseCompactNav() {
   if (typeof window === 'undefined') {
@@ -25,19 +49,6 @@ function getShouldUseCompactNav() {
     window.matchMedia('(orientation: landscape) and (max-width: 915px) and (max-height: 480px)')
       .matches
   );
-}
-
-function getProviderDisplayName(provider: AIProvider) {
-  return provider === 'Google' ? 'Gemini' : provider;
-}
-
-function getPageLabel(page: Page, secondaryWorkspaceLabel?: string) {
-  if (page === 'A') return 'Main Workspace';
-  if (page === 'B') return 'Documentation Mode';
-  if (page === 'C') return 'Traceability Calendar';
-  if (page === 'D') return 'Teams Map';
-  if (page === 'E') return 'Prompts Library';
-  return secondaryWorkspaceLabel ? `Secondary Workspace | ${secondaryWorkspaceLabel}` : 'Secondary Workspace';
 }
 
 function NavButton({
@@ -62,35 +73,37 @@ function NavButton({
 }
 
 export function BottomNav() {
-  const { state, dispatch, saveWorkerConfig } = useApp();
+  const { state, dispatch } = useApp();
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [useCompactNav, setUseCompactNav] = useState(getShouldUseCompactNav);
-  const [showWorkerModal, setShowWorkerModal] = useState(false);
-  const [toast, setToast] = useState('');
-  const [workerName, setWorkerName] = useState('');
-  const [provider, setProvider] = useState<AIProvider>('OpenAI');
-  const [promptFileName, setPromptFileName] = useState('');
-  const [promptContent, setPromptContent] = useState('');
   const currentPageLabel = useMemo(
-    () => getPageLabel(state.currentPage, state.secondaryWorkspace?.label),
+    () => getBottomNavPageLabel(state.currentPage, state.secondaryWorkspace?.label),
     [state.currentPage, state.secondaryWorkspace],
   );
+  const secondaryWorkspaceNavItem = useMemo<NavItem | null>(() => {
+    if (!state.secondaryWorkspace || state.secondaryWorkspace.teamId === CROSS_VERIFICATION_TEAM_ID) {
+      return null;
+    }
+
+    return {
+      key: 'secondary_workspace',
+      label: 'Secondary Workspace',
+      shortLabel: 'Workspace',
+      page: 'F' as const,
+    };
+  }, [state.secondaryWorkspace]);
   const mobilePages = useMemo(() => {
-    if (!state.secondaryWorkspace) {
+    if (!secondaryWorkspaceNavItem) {
       return PAGE_ITEMS;
     }
 
     return [
       ...PAGE_ITEMS,
-      {
-        label: `Secondary Workspace | ${state.secondaryWorkspace.label}`,
-        shortLabel: 'Workspace',
-        page: 'F' as const,
-      },
+      secondaryWorkspaceNavItem,
     ];
-  }, [state.secondaryWorkspace]);
+  }, [secondaryWorkspaceNavItem]);
 
   const closeMenus = () => {
     setShowSettings(false);
@@ -98,56 +111,30 @@ export function BottomNav() {
     setShowMobileMenu(false);
   };
 
-  const resetWorkerForm = () => {
-    setWorkerName('');
-    setProvider('OpenAI');
-    setPromptFileName('');
-    setPromptContent('');
-  };
-
-  const handlePromptUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    setPromptFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPromptContent(typeof reader.result === 'string' ? reader.result : '');
-    };
-    reader.onerror = () => {
-      setPromptContent('');
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSaveWorker = () => {
-    if (!workerName.trim()) {
-      setToast('Worker name is required.');
-      return;
-    }
-
-    saveWorkerConfig({
-      workerName: workerName.trim(),
-      provider,
-      promptFileName: promptFileName || 'No prompt uploaded',
-      promptContent,
-    });
-    setShowWorkerModal(false);
-    setToast('Worker configuration saved.');
-    resetWorkerForm();
-  };
-
   const ribbonColor =
-    state.currentPage === 'F' && state.secondaryWorkspace
-      ? state.secondaryWorkspace.color
-      : '#111111';
+    state.currentPage === 'G'
+      ? getTeamTheme(CROSS_VERIFICATION_TEAM_ID).ribbon
+      : state.currentPage === 'F' && state.secondaryWorkspace
+        ? state.secondaryWorkspace.color
+        : '#111111';
 
   const navigateToPage = (page: Page) => {
-    dispatch({ type: 'SET_PAGE', page });
+    if (page === 'H') {
+      dispatch({ type: 'OPEN_WORKSPACE_VERSION_HISTORY' });
+    } else {
+      dispatch({ type: 'SET_PAGE', page });
+    }
     closeMenus();
   };
+
+  const navigateToCrossVerification = () => {
+    dispatch({ type: 'OPEN_CROSS_VERIFICATION_ROUTE' });
+    closeMenus();
+  };
+
+  const isCrossVerificationActive =
+    state.currentPage === 'G' ||
+    (state.currentPage === 'F' && state.secondaryWorkspace?.teamId === CROSS_VERIFICATION_TEAM_ID);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -213,16 +200,6 @@ export function BottomNav() {
           }`}
         >
           <NavButton
-            label="+ Worker"
-            onClick={() => {
-              closeMenus();
-              setShowWorkerModal(true);
-            }}
-          />
-
-          <span className="hidden text-white/20 lg:block">|</span>
-
-          <NavButton
             label="Main Workspace"
             active={state.currentPage === 'A'}
             onClick={() => navigateToPage('A')}
@@ -231,9 +208,9 @@ export function BottomNav() {
           <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
-            label="Teams Map"
-            active={state.currentPage === 'D'}
-            onClick={() => navigateToPage('D')}
+            label="Cross Verification"
+            active={isCrossVerificationActive}
+            onClick={navigateToCrossVerification}
           />
 
           <span className="hidden text-white/20 lg:block">|</span>
@@ -247,9 +224,17 @@ export function BottomNav() {
           <span className="hidden text-white/20 lg:block">|</span>
 
           <NavButton
-            label="Traceability Calendar"
+            label="Audit Log"
             active={state.currentPage === 'C'}
             onClick={() => navigateToPage('C')}
+          />
+
+          <span className="hidden text-white/20 lg:block">|</span>
+
+          <NavButton
+            label="Teams Map"
+            active={state.currentPage === 'D'}
+            onClick={() => navigateToPage('D')}
           />
 
           <span className="hidden text-white/20 lg:block">|</span>
@@ -260,12 +245,12 @@ export function BottomNav() {
             onClick={() => navigateToPage('E')}
           />
 
-          {state.secondaryWorkspace && (
+          {secondaryWorkspaceNavItem && (
             <>
               <span className="hidden text-white/20 lg:block">|</span>
               <NavButton
                 label="Secondary Workspace"
-                active={state.currentPage === 'F'}
+                active={state.currentPage === 'F' && !isCrossVerificationActive}
                 onClick={() => navigateToPage('F')}
               />
             </>
@@ -316,11 +301,11 @@ export function BottomNav() {
               <div className="ui-popover absolute bottom-12 right-0 min-w-48 py-1">
                 {ADVANCED_ITEMS.map((item) => (
                   <button
-                    key={item}
+                    key={item.label}
                     className="block w-full px-4 py-2 text-left text-xs text-white/65 transition-colors hover:bg-white/8"
-                    onClick={closeMenus}
+                    onClick={() => (item.page ? navigateToPage(item.page) : closeMenus())}
                   >
-                    {item}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -389,32 +374,24 @@ export function BottomNav() {
               <div className="ui-bottomnav-menu-scroll max-h-[min(68dvh,26rem)] overflow-y-auto py-1">
                 {mobilePages.map((item) => (
                   <button
-                    key={item.page}
+                    key={item.key}
                     data-mobile-menu-item={item.label}
                     className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/86 transition-colors hover:bg-white/8"
-                    onClick={() => navigateToPage(item.page)}
+                    onClick={() =>
+                      item.workspace ? navigateToCrossVerification() : navigateToPage(item.page)
+                    }
                   >
                     <span>{item.label}</span>
                     <span className="text-[10px] uppercase tracking-[0.16em] text-white/45">
-                      {state.currentPage === item.page ? 'Current' : item.shortLabel}
+                      {(item.workspace
+                        ? isCrossVerificationActive
+                        : state.currentPage === item.page) &&
+                      !(item.key === 'secondary_workspace' && isCrossVerificationActive)
+                        ? 'Current'
+                        : item.shortLabel}
                     </span>
                   </button>
                 ))}
-
-                <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
-                  Tools
-                </div>
-                <button
-                  data-mobile-menu-item="+ Worker"
-                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/86 transition-colors hover:bg-white/8"
-                  onClick={() => {
-                    closeMenus();
-                    setShowWorkerModal(true);
-                  }}
-                >
-                  <span>+ Worker</span>
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-white/45">Open</span>
-                </button>
 
                 <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
                   Settings
@@ -435,12 +412,12 @@ export function BottomNav() {
                 </div>
                 {ADVANCED_ITEMS.map((item) => (
                   <button
-                    key={item}
-                    data-mobile-menu-item={item}
+                    key={item.label}
+                    data-mobile-menu-item={item.label}
                     className="block w-full px-4 py-3 text-left text-sm text-white/72 transition-colors hover:bg-white/8 hover:text-white"
-                    onClick={closeMenus}
+                    onClick={() => (item.page ? navigateToPage(item.page) : closeMenus())}
                   >
-                    {item}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -449,102 +426,6 @@ export function BottomNav() {
         </div>
       )}
 
-      {showWorkerModal && (
-        <Modal
-          title="Configure demo worker"
-          onClose={() => {
-            setShowWorkerModal(false);
-            resetWorkerForm();
-          }}
-          width="max-w-2xl"
-        >
-          <div className="grid gap-4">
-            <label className="grid gap-1">
-              <span className="ui-label">Worker name</span>
-              <input
-                className="ui-input"
-                value={workerName}
-                onChange={(event) => setWorkerName(event.target.value)}
-                placeholder="Example: Research Worker"
-                autoFocus
-              />
-            </label>
-
-            <div className="grid gap-1">
-              <span className="ui-label">AI provider</span>
-              <div className="flex flex-wrap gap-2">
-                {(['OpenAI', 'Anthropic', 'Google'] as AIProvider[]).map((item) => (
-                  <button
-                    key={item}
-                    className={`ui-button ${
-                      provider === item
-                        ? 'ui-button-primary text-white'
-                        : 'text-neutral-700'
-                    }`}
-                    onClick={() => setProvider(item)}
-                  >
-                    {getProviderDisplayName(item)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label className="grid gap-1">
-              <span className="ui-label">Upload prompts</span>
-              <input
-                className="ui-input"
-                type="file"
-                onChange={handlePromptUpload}
-              />
-            </label>
-
-            <div className="ui-surface-subtle px-3 py-3 text-xs text-neutral-600">
-              <div className="font-medium text-neutral-800">
-                Prompt file: {promptFileName || 'No file selected'}
-              </div>
-              <div className="mt-1 max-h-14 overflow-hidden">
-                {promptContent || 'File content is optional in demo mode. The file name will still be saved.'}
-              </div>
-            </div>
-
-            {state.workerConfigs.length > 0 && (
-              <div className="ui-surface px-3 py-3">
-                <div className="mb-2 text-xs font-semibold tracking-[0.08em] text-neutral-700">
-                  Saved demo workers
-                </div>
-                <div className="grid gap-2">
-                  {state.workerConfigs.slice(0, 3).map((config) => (
-                    <div key={config.id} className="flex items-center justify-between text-xs text-neutral-600">
-                      <span>{config.workerName}</span>
-                      <span>{getProviderDisplayName(config.provider)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                className="ui-button text-neutral-700"
-                onClick={() => {
-                  setShowWorkerModal(false);
-                  resetWorkerForm();
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="ui-button ui-button-primary text-white"
-                onClick={handleSaveWorker}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </>
   );
 }

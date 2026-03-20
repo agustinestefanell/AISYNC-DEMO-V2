@@ -1,26 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../context';
 import { openCrossVerificationWindow } from '../crossVerificationLaunch';
-import { getProviderDisplayName } from '../data/teams';
-import type { AgentRole, AIProvider, FileType, WorkspaceVersion } from '../types';
+import type { AgentRole, FileType, WorkspaceVersion } from '../types';
 import { formatWorkspaceVersionTimestamp } from '../versioning';
-import { ContextUploadModal, type ContextUploadItem } from './ContextUploadModal';
-import { LockIconButton } from './LockIconButton';
 import { Modal } from './Modal';
+import { LockIconButton } from './LockIconButton';
 import { SaveBackupModal } from './SaveBackupModal';
 import { Toast } from './Toast';
-
-export interface TeamMessage {
-  id: string;
-  role: 'user' | 'agent' | 'system';
-  content: string;
-  timestamp: string;
-  senderLabel: string;
-  variant?: 'standard' | 'forwarded';
-}
+import type { TeamMessage } from './SecondaryWorkspacePanel';
 
 function createMessageId() {
-  return `team_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `team_manager_msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function getNowTime() {
@@ -46,13 +36,16 @@ function buildAuditContent(messages: TeamMessage[]) {
   return messages.map((message) => `${message.senderLabel}: ${message.content.trim()}`).join('\n\n');
 }
 
-export function SecondaryWorkspacePanel({
+export interface TeamSubManagerForwardOption {
+  id: string;
+  label: string;
+  workerId?: string;
+  agentRole?: AgentRole;
+}
+
+export function TeamSubManagerPanel({
   teamId,
   teamLabel,
-  workerId,
-  workerLabel,
-  provider,
-  saveAgent,
   theme,
   messages,
   selectedIds,
@@ -75,10 +68,6 @@ export function SecondaryWorkspacePanel({
 }: {
   teamId: string;
   teamLabel: string;
-  workerId: string;
-  workerLabel: string;
-  provider: AIProvider;
-  saveAgent: AgentRole;
   theme: {
     ribbon: string;
     soft: string;
@@ -91,7 +80,7 @@ export function SecondaryWorkspacePanel({
   documentLocked: boolean;
   workspaceVersions: WorkspaceVersion[];
   seedMessages: TeamMessage[];
-  forwardOptions: Array<{ id: string; label: string }>;
+  forwardOptions: TeamSubManagerForwardOption[];
   onSetDraft: (value: string) => void;
   onToggleDocumentLock: () => void;
   onSaveVersion: () => void;
@@ -99,7 +88,7 @@ export function SecondaryWorkspacePanel({
   onClearSelection: () => void;
   onAddUserMessage: (message: TeamMessage) => void;
   onAddAgentReply: (message: TeamMessage) => void;
-  onForwardSelection: (targetWorkerId: string, message: TeamMessage) => void;
+  onForwardSelection: (target: TeamSubManagerForwardOption, message: TeamMessage) => void;
   onResetToSeed: (messages: TeamMessage[]) => void;
   onClearChat: () => void;
   style?: CSSProperties;
@@ -109,8 +98,6 @@ export function SecondaryWorkspacePanel({
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
   const [showSaveSelection, setShowSaveSelection] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showContextModal, setShowContextModal] = useState(false);
-  const [contextItems, setContextItems] = useState<ContextUploadItem[]>([]);
   const [toast, setToast] = useState('');
   const [forwardTarget, setForwardTarget] = useState(forwardOptions[0]?.id ?? '');
   const [fileTitle, setFileTitle] = useState('');
@@ -148,10 +135,10 @@ export function SecondaryWorkspacePanel({
       setProjectId((current) => current || state.projects[0]?.id || '');
       setEventDate(new Date().toISOString().slice(0, 10));
       setFileTitle(
-        `${teamLabel.replace(/[^a-zA-Z0-9]+/g, '_')}_${workerLabel}_${new Date().toISOString().slice(0, 10)}`,
+        `${teamLabel.replace(/[^a-zA-Z0-9]+/g, '_')}_SubManager_${new Date().toISOString().slice(0, 10)}`,
       );
     }
-  }, [showSaveModal, state.projects, teamLabel, workerLabel]);
+  }, [showSaveModal, state.projects, teamLabel]);
 
   useEffect(() => {
     if (showSaveModal && selectedMessages.length === 0) {
@@ -161,7 +148,7 @@ export function SecondaryWorkspacePanel({
 
   const sendMessage = () => {
     if (documentLocked) {
-      setToast('Document lock is active. Unlock this workspace lane to send new content.');
+      setToast('Document lock is active. Unlock this sub-manager thread to send new content.');
       return;
     }
 
@@ -182,16 +169,16 @@ export function SecondaryWorkspacePanel({
       onAddAgentReply({
         id: createMessageId(),
         role: 'agent',
-        content: `${workerLabel} received the new brief and is progressing the ${teamLabel} queue with the current constraints in mind.`,
+        content: `${teamLabel} Sub-Manager logged the update and is coordinating the next reviewed team action.`,
         timestamp: getNowTime(),
-        senderLabel: getProviderDisplayName(provider),
+        senderLabel: 'Gemini',
       });
-    }, 700);
+    }, 620);
   };
 
   const handleForward = () => {
     if (documentLocked) {
-      setToast('Document lock is active. Unlock this workspace lane to review and forward.');
+      setToast('Document lock is active. Unlock this sub-manager thread to review and forward.');
       return;
     }
 
@@ -200,21 +187,45 @@ export function SecondaryWorkspacePanel({
       return;
     }
 
-    if (!forwardTarget) {
-      setToast('Choose another worker first.');
+    const target = forwardOptions.find((option) => option.id === forwardTarget);
+    if (!target) {
+      setToast('Choose a valid destination first.');
       return;
     }
 
-    onForwardSelection(forwardTarget, {
+    onForwardSelection(target, {
       id: createMessageId(),
       role: 'system',
-      content: buildForwardedContent(selectedMessages, workerLabel.toUpperCase()),
+      content: buildForwardedContent(selectedMessages, `${teamLabel.toUpperCase()} SUB-MANAGER`),
       timestamp: getNowTime(),
       senderLabel: 'System',
       variant: 'forwarded',
     });
     onClearSelection();
-    setToast(`Reviewed & forwarded ${selectedMessages.length} message(s).`);
+    setToast(`Reviewed & forwarded ${selectedMessages.length} message(s) to ${target.label}.`);
+  };
+
+  const handleSave = () => {
+    if (selectedMessages.length === 0) {
+      setToast('Select the messages you want to back up first.');
+      return;
+    }
+
+    saveFile({
+      agent: 'manager',
+      sourceLabel: `${teamLabel} | Sub-Manager`,
+      content: buildSaveContent(selectedMessages),
+      title:
+        fileTitle.trim() ||
+        `${teamLabel}_SubManager_${new Date().toISOString().slice(0, 10)}`,
+      type: fileType,
+      projectId,
+      date: eventDate,
+    });
+    onClearSelection();
+    setShowSaveSelection(false);
+    setShowSaveModal(false);
+    setToast('Saved to Documentation Mode.');
   };
 
   const openSaveBackup = () => {
@@ -228,30 +239,9 @@ export function SecondaryWorkspacePanel({
     setShowSaveModal(true);
   };
 
-  const handleSave = () => {
-    if (selectedMessages.length === 0) {
-      setToast('Select the messages you want to back up first.');
-      return;
-    }
-
-    saveFile({
-      agent: saveAgent,
-      sourceLabel: `${teamLabel} | ${workerLabel}`,
-      content: buildSaveContent(selectedMessages),
-      title: fileTitle.trim() || `${teamLabel}_${workerLabel}_${new Date().toISOString().slice(0, 10)}`,
-      type: fileType,
-      projectId,
-      date: eventDate,
-    });
-    onClearSelection();
-    setShowSaveSelection(false);
-    setShowSaveModal(false);
-    setToast('Saved to Documentation Mode.');
-  };
-
   const handleAuditAnswer = () => {
     if (documentLocked) {
-      setToast('Document lock is active. Unlock this workspace lane to audit the selection.');
+      setToast('Document lock is active. Unlock this sub-manager thread to audit the selection.');
       return;
     }
 
@@ -263,21 +253,20 @@ export function SecondaryWorkspacePanel({
       sourcePage: 'F' as const,
       sourceWorkspace: state.secondaryWorkspace,
       sourceArea: 'team-workspace' as const,
-      sourceAgentId: workerId,
-      sourceAgentLabel: workerLabel,
-      sourceAgentType: 'worker' as const,
+      sourceAgentId: `${teamId}:sub-manager`,
+      sourceAgentLabel: `${teamLabel} Sub-Manager`,
+      sourceAgentType: 'sub-manager' as const,
       sourceTeamId: teamId,
       sourceTeamLabel: teamLabel,
       sourceReturnTarget: {
-        id: `${teamId}:${workerId}`,
-        kind: 'origin-agent' as const,
-        label: workerLabel,
+        id: `${teamId}:sub-manager`,
+        kind: 'origin-team-sub-manager' as const,
+        label: `${teamLabel} Sub-Manager`,
         page: 'F' as const,
         sourceArea: 'team-workspace' as const,
         teamId,
         teamLabel,
         workspace: state.secondaryWorkspace,
-        workerId,
       },
       sourceTeamManagerTarget: {
         id: `${teamId}:sub-manager`,
@@ -314,10 +303,6 @@ export function SecondaryWorkspacePanel({
     setToast('Popup blocked. Cross Verification opened in this window.');
   };
 
-  const openPromptsLibrary = () => {
-    dispatch({ type: 'SET_PAGE', page: 'E' });
-  };
-
   const handleSaveVersion = () => {
     if (messages.length === 0) {
       setToast('Add or keep some thread content before saving a version.');
@@ -330,7 +315,7 @@ export function SecondaryWorkspacePanel({
 
   return (
     <div
-      data-team-panel={workerId}
+      data-team-panel={`${teamId}-sub-manager`}
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-neutral-200 bg-white last:border-r-0"
       style={{ ...style, borderTopColor: theme.ribbon, borderTopWidth: 2 }}
     >
@@ -351,23 +336,12 @@ export function SecondaryWorkspacePanel({
               </span>
             </div>
             <div className="truncate text-[11px] font-semibold text-neutral-900">
-              {workerLabel} | {getProviderDisplayName(provider)}
+              Sub-Manager | Gemini
             </div>
             <div className="ui-chat-panel-meta">{versionSummary}</div>
           </div>
 
           <LockIconButton locked={documentLocked} onClick={onToggleDocumentLock} />
-        </div>
-      </div>
-
-      <div className="shrink-0 px-3 pb-1 pt-1">
-        <div className="ui-chat-tools-row">
-          <button className="ui-chat-prompt shrink-0" onClick={openPromptsLibrary}>
-            + Prompts
-          </button>
-          <button className="ui-chat-prompt shrink-0" onClick={() => setShowContextModal(true)}>
-            Upload Context
-          </button>
         </div>
       </div>
 
@@ -414,7 +388,7 @@ export function SecondaryWorkspacePanel({
                         ? 'ui-message-bubble ui-message-bubble-forwarded'
                         : isUser
                           ? 'ui-message-bubble ui-message-bubble-user'
-                          : 'ui-message-bubble'
+                          : 'ui-message-bubble border-[rgba(164,145,102,0.14)]'
                     } ${isSelected ? 'ring-2 ring-[rgba(0,122,255,0.18)]' : ''}`}
                   >
                     {isForwarded ? (
@@ -452,15 +426,19 @@ export function SecondaryWorkspacePanel({
 
       <div
         className="ui-chat-composer-section shrink-0 px-3 pb-0.5 pt-0.5"
-        style={{ backgroundColor: theme.soft, borderTopColor: theme.border }}
+        style={{
+          backgroundColor: theme.soft,
+          borderTopColor: theme.border,
+          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
+        }}
       >
         <div className="ui-chat-composer">
           <input
             className="ui-chat-composer-input"
             placeholder={
               documentLocked
-                ? 'Document locked. Unlock to message this lane.'
-                : `Message ${getProviderDisplayName(provider)}...`
+                ? 'Document locked. Unlock to message this sub-manager thread.'
+                : `Message ${teamLabel} Sub-Manager...`
             }
             value={draft}
             disabled={documentLocked}
@@ -484,7 +462,11 @@ export function SecondaryWorkspacePanel({
 
       <div
         className="ui-chat-forward-section shrink-0 px-3 pb-0.5 pt-0.5"
-        style={{ backgroundColor: theme.soft, borderTopColor: theme.border }}
+        style={{
+          backgroundColor: theme.soft,
+          borderTopColor: theme.border,
+          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
+        }}
       >
         <div className="ui-forward-stack">
           <div className="ui-forward-row">
@@ -515,7 +497,7 @@ export function SecondaryWorkspacePanel({
           </div>
         </div>
 
-        {(showSaveSelection || selectedMessages.length > 0 || contextItems.length > 0) && (
+        {(showSaveSelection || selectedMessages.length > 0) && (
           <div className="mt-2 grid gap-2">
             {showSaveSelection && (
               <div className="ui-surface-subtle flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[11px] text-neutral-700">
@@ -547,18 +529,6 @@ export function SecondaryWorkspacePanel({
               </div>
             )}
 
-            {contextItems.length > 0 && (
-              <div className="ui-surface-subtle px-3 py-2 text-[11px] text-neutral-700">
-                <div className="font-medium text-neutral-800">
-                  Context ready: {contextItems.length} item{contextItems.length === 1 ? '' : 's'}
-                </div>
-                <div className="mt-1 truncate text-neutral-500">
-                  {contextItems.slice(0, 2).map((item) => item.label).join(' | ')}
-                  {contextItems.length > 2 ? ` | +${contextItems.length - 2} more` : ''}
-                </div>
-              </div>
-            )}
-
             {selectedMessages.length > 0 && !showSaveSelection && (
               <button
                 className="mt-1 text-[11px] text-neutral-500 underline-offset-2 hover:underline"
@@ -573,7 +543,11 @@ export function SecondaryWorkspacePanel({
 
       <div
         className="ui-chat-actions-section shrink-0 px-3 pb-2 pt-0"
-        style={{ backgroundColor: theme.soft, borderTopColor: theme.border }}
+        style={{
+          backgroundColor: theme.soft,
+          borderTopColor: theme.border,
+          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
+        }}
       >
         <div className="ui-chat-actions-grid grid grid-cols-1 gap-1 sm:grid-cols-4">
           <button
@@ -657,15 +631,6 @@ export function SecondaryWorkspacePanel({
         onEventDateChange={setEventDate}
         projects={state.projects}
         onSave={handleSave}
-      />
-
-      <ContextUploadModal
-        open={showContextModal}
-        onClose={() => setShowContextModal(false)}
-        onSelect={(items) => {
-          setContextItems(items);
-          setToast(`Context loaded from ${items.length} selected item(s).`);
-        }}
       />
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}

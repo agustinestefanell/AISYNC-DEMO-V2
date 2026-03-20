@@ -4,12 +4,29 @@ import type {
   SecondaryWorkspaceTarget,
   TeamFolderItem,
   TeamsGraphNode,
+  WorkPhaseState,
 } from '../types';
+
+export const DOCUMENTATION_SAVING_DEFAULTS = [
+  'Documentation Mode',
+  'Team Workspace',
+  'Audit Log',
+] as const;
+
+export type DocumentationSavingDefault = (typeof DOCUMENTATION_SAVING_DEFAULTS)[number];
+
+export interface TeamSettings {
+  documentationSavingDefault: DocumentationSavingDefault;
+  savingTag: string;
+}
 
 export interface TeamsMapState {
   teamsGraph: TeamsGraphNode[];
   foldersByTeam: Record<string, TeamFolderItem[]>;
+  teamSettingsByTeam: Record<string, TeamSettings>;
 }
+
+export const CROSS_VERIFICATION_TEAM_ID = 'team_cross_verification';
 
 interface TeamTheme {
   ribbon: string;
@@ -20,6 +37,80 @@ interface TeamTheme {
 
 export const TEAMS_STORAGE_KEY = 'aisync_teams_map_v2';
 export const PROVIDERS: AIProvider[] = ['OpenAI', 'Anthropic', 'Google'];
+
+function buildDefaultTeamSettings(teamId: string, teamLabel: string): TeamSettings {
+  if (teamId === 'team_legal') {
+    return {
+      documentationSavingDefault: 'Documentation Mode',
+      savingTag: 'LEGAL-REVIEW',
+    };
+  }
+
+  if (teamId === 'team_marketing') {
+    return {
+      documentationSavingDefault: 'Team Workspace',
+      savingTag: 'MKT-OPS',
+    };
+  }
+
+  if (teamId === 'team_clients') {
+    return {
+      documentationSavingDefault: 'Audit Log',
+      savingTag: 'CLIENT-READY',
+    };
+  }
+
+  if (teamId === CROSS_VERIFICATION_TEAM_ID) {
+    return {
+      documentationSavingDefault: 'Audit Log',
+      savingTag: 'XVERIFY',
+    };
+  }
+
+  return {
+    documentationSavingDefault: 'Documentation Mode',
+    savingTag: teamLabel
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 18) || 'TEAM',
+  };
+}
+
+function buildCrossVerificationTeamSeed() {
+  const managerId = `${CROSS_VERIFICATION_TEAM_ID}_sm`;
+
+  return {
+    nodes: [
+      {
+        id: managerId,
+        type: 'senior_manager' as const,
+        label: 'Cross Verification',
+        provider: 'OpenAI' as AIProvider,
+        parentId: 'gm_1',
+        teamId: CROSS_VERIFICATION_TEAM_ID,
+        phaseState: 'In Review' as WorkPhaseState,
+      },
+      {
+        id: `${CROSS_VERIFICATION_TEAM_ID}_worker_1`,
+        type: 'worker' as const,
+        label: 'Verifier A',
+        provider: 'Anthropic' as AIProvider,
+        parentId: managerId,
+        teamId: CROSS_VERIFICATION_TEAM_ID,
+      },
+      {
+        id: `${CROSS_VERIFICATION_TEAM_ID}_worker_2`,
+        type: 'worker' as const,
+        label: 'Verifier B',
+        provider: 'Google' as AIProvider,
+        parentId: managerId,
+        teamId: CROSS_VERIFICATION_TEAM_ID,
+      },
+    ],
+    folders: buildFolderSeed(CROSS_VERIFICATION_TEAM_ID, 'Cross Verification'),
+  };
+}
 
 const DYNAMIC_TEAM_THEMES: TeamTheme[] = [
   {
@@ -46,12 +137,49 @@ export function getProviderDisplayName(provider: AIProvider) {
   return provider === 'Google' ? 'Gemini' : provider;
 }
 
+function getDefaultTeamPhaseState(teamId: string): WorkPhaseState {
+  if (teamId === 'team_legal') return 'In Review';
+  if (teamId === 'team_clients') return 'Closed';
+  if (teamId === CROSS_VERIFICATION_TEAM_ID) return 'In Review';
+  return 'Open';
+}
+
+function getDefaultFilePhaseState(item: TeamFolderItem): WorkPhaseState {
+  if (item.fileType === 'Report') return 'Closed';
+  if (item.fileType === 'Document' && item.name.toLowerCase().includes('spec')) return 'In Review';
+  if (item.name.toLowerCase().includes('session02')) return 'In Review';
+  return 'Open';
+}
+
+function normalizeFolderPhaseStates(items: TeamFolderItem[]): TeamFolderItem[] {
+  return items.map((item) =>
+    item.type === 'folder'
+      ? {
+          ...item,
+          children: normalizeFolderPhaseStates(item.children ?? []),
+        }
+      : {
+          ...item,
+          phaseState: item.phaseState ?? getDefaultFilePhaseState(item),
+        },
+  );
+}
+
+function withDefaultTeamPhaseState(node: TeamsGraphNode): TeamsGraphNode {
+  if (node.phaseState || node.parentId !== 'gm_1') {
+    return node;
+  }
+
+  return { ...node, phaseState: getDefaultTeamPhaseState(node.teamId) };
+}
+
 function createFile(
   id: string,
   name: string,
   fileType: FileType,
   content: string,
   createdAt: string,
+  phaseState: WorkPhaseState = 'Open',
 ): TeamFolderItem {
   return {
     id,
@@ -60,6 +188,7 @@ function createFile(
     fileType,
     content,
     createdAt,
+    phaseState,
   };
 }
 
@@ -102,6 +231,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
         'Conversation',
         `${teamLabel} session 01.\n\nRouting summary, active tasks, and worker handoff notes.`,
         '2026-03-04T09:15:00.000Z',
+        'Open',
       ),
       createFile(
         `${teamId}_conv_2`,
@@ -109,6 +239,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
         'Conversation',
         `${teamLabel} session 02.\n\nFollow-up actions, open questions, and context inheritance details.`,
         '2026-03-05T11:10:00.000Z',
+        'In Review',
       ),
     ]),
     createFolder(`${teamId}_documents`, 'Documents', [
@@ -119,6 +250,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
           'Document',
           `${teamLabel} draft.\n\nOutline, workstreams, and interim deliverables for the current sprint.`,
           '2026-03-05T13:00:00.000Z',
+          'Open',
         ),
       ]),
       createFolder(`${teamId}_documents_specs`, 'Specs', [
@@ -128,6 +260,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
           'Document',
           `${teamLabel} technical specs.\n\nDependencies, sequencing, and review criteria.`,
           '2026-03-06T14:20:00.000Z',
+          'In Review',
         ),
       ]),
     ]),
@@ -138,6 +271,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
         'Report',
         `${teamLabel} daily summary.\n\nCompleted work, blockers, and next operating window.`,
         '2026-03-06T16:40:00.000Z',
+        'Closed',
       ),
       createFolder(`${teamId}_reports_phase`, 'Phase Reports', [
         createFile(
@@ -146,6 +280,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
           'Report',
           `${teamLabel} phase report.\n\nMilestones reached, evidence attached, and decisions logged.`,
           '2026-03-07T10:25:00.000Z',
+          'Closed',
         ),
       ]),
     ]),
@@ -156,6 +291,7 @@ export function buildFolderSeed(teamId: string, teamLabel: string): TeamFolderIt
         'Conversation',
         `${teamLabel} decision log.\n\nCompact operational trace of approvals and escalations.`,
         '2026-03-07T11:45:00.000Z',
+        'Closed',
       ),
     ]),
   ];
@@ -195,6 +331,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
   ];
 
   const foldersByTeam: Record<string, TeamFolderItem[]> = {};
+  const teamSettingsByTeam: Record<string, TeamSettings> = {};
 
   teams.forEach((team, teamIndex) => {
     if (team.teamId === 'team_clients') {
@@ -205,6 +342,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
         provider: team.provider,
         parentId: 'gm_1',
         teamId: team.teamId,
+        phaseState: getDefaultTeamPhaseState(team.teamId),
       });
     } else {
       teamsGraph.push({
@@ -214,6 +352,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
         provider: team.provider,
         parentId: 'gm_1',
         teamId: team.teamId,
+        phaseState: getDefaultTeamPhaseState(team.teamId),
       });
 
       team.workers.forEach((workerLabel, workerIndex) => {
@@ -229,9 +368,18 @@ export function createSeedTeamsMapState(): TeamsMapState {
     }
 
     foldersByTeam[team.teamId] = buildFolderSeed(team.teamId, team.label);
+    teamSettingsByTeam[team.teamId] = buildDefaultTeamSettings(team.teamId, team.label);
   });
 
-  return { teamsGraph, foldersByTeam };
+  const crossVerificationSeed = buildCrossVerificationTeamSeed();
+  teamsGraph.push(...crossVerificationSeed.nodes);
+  foldersByTeam[CROSS_VERIFICATION_TEAM_ID] = crossVerificationSeed.folders;
+  teamSettingsByTeam[CROSS_VERIFICATION_TEAM_ID] = buildDefaultTeamSettings(
+    CROSS_VERIFICATION_TEAM_ID,
+    'Cross Verification',
+  );
+
+  return { teamsGraph, foldersByTeam, teamSettingsByTeam };
 }
 
 export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
@@ -242,6 +390,10 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
     .filter((node) => node.type === 'worker' && node.teamId === 'team_clients')
     .sort((left, right) => left.id.localeCompare(right.id));
   const remainingNodes = input.teamsGraph.filter((node) => node.teamId !== 'team_clients');
+  const crossVerificationNodes = input.teamsGraph
+    .filter((node) => node.teamId === CROSS_VERIFICATION_TEAM_ID)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const crossVerificationSeed = buildCrossVerificationTeamSeed();
   const primaryWorker = clientWorkers[0];
   const clientWorker: TeamsGraphNode = primaryWorker
     ? {
@@ -249,6 +401,7 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
         label: 'W-Clients / Projects',
         parentId: 'gm_1',
         provider: primaryWorker.provider || clientManager?.provider || 'Google',
+        phaseState: primaryWorker.phaseState ?? getDefaultTeamPhaseState('team_clients'),
       }
     : {
         id: 'team_clients_worker_1',
@@ -257,16 +410,49 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
         provider: clientManager?.provider || 'Google',
         parentId: 'gm_1',
         teamId: 'team_clients',
+        phaseState: getDefaultTeamPhaseState('team_clients'),
       };
 
-  return {
-    teamsGraph: [...remainingNodes, clientWorker],
-    foldersByTeam: {
+  const normalizedFoldersByTeam = Object.fromEntries(
+    Object.entries({
       ...input.foldersByTeam,
       team_clients:
         input.foldersByTeam.team_clients ??
         buildFolderSeed('team_clients', 'W-Clients / Projects'),
-    },
+      [CROSS_VERIFICATION_TEAM_ID]:
+        input.foldersByTeam[CROSS_VERIFICATION_TEAM_ID] ?? crossVerificationSeed.folders,
+    }).map(([teamId, items]) => [teamId, normalizeFolderPhaseStates(items)]),
+  );
+  const normalizedNodes = [
+    ...remainingNodes
+      .filter((node) => node.teamId !== CROSS_VERIFICATION_TEAM_ID)
+      .map(withDefaultTeamPhaseState),
+    withDefaultTeamPhaseState(clientWorker),
+    ...(crossVerificationNodes.length > 0 ? crossVerificationNodes : crossVerificationSeed.nodes).map(
+      withDefaultTeamPhaseState,
+    ),
+  ];
+  const topLevelNodes = normalizedNodes.filter((node) => node.parentId === 'gm_1');
+  const normalizedTeamSettings = Object.fromEntries(
+    topLevelNodes.map((node) => {
+      const savedSettings = input.teamSettingsByTeam?.[node.teamId];
+      const defaults = buildDefaultTeamSettings(node.teamId, node.label);
+
+      return [
+        node.teamId,
+        {
+          documentationSavingDefault:
+            savedSettings?.documentationSavingDefault ?? defaults.documentationSavingDefault,
+          savingTag: savedSettings?.savingTag?.trim() || defaults.savingTag,
+        },
+      ];
+    }),
+  );
+
+  return {
+    foldersByTeam: normalizedFoldersByTeam,
+    teamSettingsByTeam: normalizedTeamSettings,
+    teamsGraph: normalizedNodes,
   };
 }
 
@@ -349,6 +535,15 @@ export function getTeamTheme(teamId: string): TeamTheme {
       soft: 'rgba(15, 118, 110, 0.08)',
       border: 'rgba(15, 118, 110, 0.2)',
       accent: '#0f766e',
+    };
+  }
+
+  if (teamId === CROSS_VERIFICATION_TEAM_ID) {
+    return {
+      ribbon: '#334155',
+      soft: 'rgba(51, 65, 85, 0.08)',
+      border: 'rgba(51, 65, 85, 0.2)',
+      accent: '#334155',
     };
   }
 

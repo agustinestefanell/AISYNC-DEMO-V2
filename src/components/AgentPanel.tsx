@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../context';
+import { openCrossVerificationWindow } from '../crossVerificationLaunch';
 import type { AgentRole, FileType, Message } from '../types';
+import {
+  createWorkspaceVersion,
+  createWorkspaceVersionEvent,
+  formatWorkspaceVersionTimestamp,
+} from '../versioning';
 import { ContextUploadModal, type ContextUploadItem } from './ContextUploadModal';
+import { LockIconButton } from './LockIconButton';
 import { Modal } from './Modal';
 import { SaveBackupModal } from './SaveBackupModal';
 import { Toast } from './Toast';
@@ -65,12 +72,18 @@ function buildSaveContent(messages: Message[]) {
     .join('\n\n');
 }
 
+function buildAuditContent(messages: Message[]) {
+  return messages
+    .map((message) => `${message.senderLabel}: ${message.content.trim()}`)
+    .join('\n\n');
+}
+
 function buildForwardedContent(messages: Message[], sourceLabel: string) {
   const body = messages
     .map((message) => `${message.senderLabel}: ${message.content.trim()}`)
     .join('\n\n');
 
-  return `FORWARDED FROM ${sourceLabel}\n\n${body}`;
+  return `REVIEWED & FORWARDED FROM ${sourceLabel}\n\n${body}`;
 }
 
 export interface AgentPanelProps {
@@ -78,6 +91,7 @@ export interface AgentPanelProps {
   showSaveAction?: boolean;
   showRefreshAction?: boolean;
   editableRole?: boolean;
+  auditSourcePage?: 'A';
   className?: string;
   style?: CSSProperties;
 }
@@ -86,6 +100,7 @@ export function AgentPanel({
   agent,
   showRefreshAction = true,
   editableRole = false,
+  auditSourcePage,
   className,
   style,
 }: AgentPanelProps) {
@@ -93,8 +108,28 @@ export function AgentPanel({
   const messages = state.messages[agent];
   const selectedIds = state.selectedMessages[agent];
   const draft = state.drafts[agent];
+  const documentLocked = state.documentLocks[agent];
+  const workspaceVersions = state.workspaceVersions[agent];
   const viewportRef = useRef<HTMLDivElement>(null);
   const isManager = agent === 'manager';
+  const rolePanelClass =
+    agent === 'manager'
+      ? 'ui-role-panel-manager'
+      : agent === 'worker1'
+        ? 'ui-role-panel-worker1'
+        : 'ui-role-panel-worker2';
+  const roleAccentColor =
+    agent === 'manager'
+      ? 'var(--color-role-manager-accent)'
+      : agent === 'worker1'
+        ? 'var(--color-role-worker1-accent)'
+        : 'var(--color-role-worker2-accent)';
+  const roleAccentSoft =
+    agent === 'manager'
+      ? 'var(--color-role-manager-soft)'
+      : agent === 'worker1'
+        ? 'var(--color-role-worker1-soft)'
+        : 'var(--color-role-worker2-soft)';
 
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -123,6 +158,12 @@ export function AgentPanel({
     () => messages.filter((message) => selectedIds.includes(message.id)),
     [messages, selectedIds],
   );
+  const latestVersion = workspaceVersions[workspaceVersions.length - 1] ?? null;
+  const versionSummary = latestVersion
+    ? `Version ${latestVersion.versionNumber} - Saved ${formatWorkspaceVersionTimestamp(
+        latestVersion.savedAt,
+      )}`
+    : 'No version saved yet';
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -162,6 +203,11 @@ export function AgentPanel({
   }, [agent, state.workerRoles]);
 
   const sendMessage = () => {
+    if (documentLocked) {
+      setToast('Document lock is active. Unlock this panel to send new content.');
+      return;
+    }
+
     if (!draft.trim()) {
       return;
     }
@@ -199,8 +245,13 @@ export function AgentPanel({
   };
 
   const handleForward = () => {
+    if (documentLocked) {
+      setToast('Document lock is active. Unlock this panel to review and forward.');
+      return;
+    }
+
     if (selectedIds.length === 0) {
-      setToast('Select messages to forward first.');
+      setToast('Select messages to review and forward first.');
       return;
     }
 
@@ -222,7 +273,79 @@ export function AgentPanel({
       },
     });
     dispatch({ type: 'CLEAR_SELECTION', agent });
-    setToast(`Forwarded ${orderedMessages.length} message(s) to ${getAgentLabel(forwardTarget)}.`);
+    setToast(
+      `Reviewed & forwarded ${orderedMessages.length} message(s) to ${getAgentLabel(forwardTarget)}.`,
+    );
+  };
+
+  const handleAuditAnswer = () => {
+    if (documentLocked) {
+      setToast('Document lock is active. Unlock this panel to audit the selected content.');
+      return;
+    }
+
+    if (!auditSourcePage || selectedMessages.length === 0) {
+      return;
+    }
+
+    const payload = {
+      sourcePage: auditSourcePage,
+      sourceWorkspace: null,
+      sourceArea: 'main-workspace' as const,
+      sourceAgentId: agent,
+      sourceAgentLabel: getAgentLabel(agent),
+      sourceAgentType: agent === 'manager' ? 'manager' as const : 'worker' as const,
+      sourceTeamId: 'main_workspace',
+      sourceTeamLabel: 'Main Workspace',
+      sourceReturnTarget: {
+        id: `main_workspace:${agent}`,
+        kind: 'origin-agent' as const,
+        label: getAgentLabel(agent),
+        page: auditSourcePage,
+        sourceArea: 'main-workspace' as const,
+        teamId: 'main_workspace',
+        teamLabel: 'Main Workspace',
+        agentRole: agent,
+      },
+      sourceTeamManagerTarget:
+        agent === 'manager'
+          ? null
+          : {
+              id: 'main_workspace:manager',
+              kind: 'origin-team-sub-manager' as const,
+              label: 'AI General Manager',
+              page: auditSourcePage,
+              sourceArea: 'main-workspace' as const,
+              teamId: 'main_workspace',
+              teamLabel: 'Main Workspace',
+              agentRole: 'manager' as const,
+            },
+      sourceSupervisorTarget:
+        agent === 'manager'
+          ? null
+          : {
+              id: 'main_workspace:manager',
+              kind: 'origin-supervisor' as const,
+              label: 'AI General Manager',
+              page: auditSourcePage,
+              sourceArea: 'main-workspace' as const,
+              teamId: 'main_workspace',
+              teamLabel: 'Main Workspace',
+              agentRole: 'manager' as const,
+            },
+      contentType: 'message-selection' as const,
+      selectedCount: selectedMessages.length,
+      messageIds: selectedMessages.map((message) => message.id),
+      content: buildAuditContent(selectedMessages),
+    };
+
+    if (openCrossVerificationWindow(payload)) {
+      setToast('Cross Verification opened in a new window.');
+      return;
+    }
+
+    dispatch({ type: 'OPEN_CROSS_VERIFICATION_ROUTE', payload });
+    setToast('Popup blocked. Cross Verification opened in this window.');
   };
 
   const handleSave = () => {
@@ -260,14 +383,54 @@ export function AgentPanel({
     dispatch({ type: 'SET_PAGE', page: 'E' });
   };
 
+  const handleSaveVersion = () => {
+    if (messages.length === 0) {
+      setToast('Add or keep some thread content before saving a version.');
+      return;
+    }
+
+    const version = createWorkspaceVersion(
+      messages,
+      draft,
+      documentLocked,
+      workspaceVersions,
+      documentLocked ? 'Locked checkpoint' : undefined,
+    );
+
+    dispatch({
+      type: 'SAVE_WORKSPACE_VERSION',
+      agent,
+      version,
+    });
+    dispatch({
+      type: 'ADD_CALENDAR_EVENT',
+      event: createWorkspaceVersionEvent({
+        version,
+        projectId: state.projects[0]?.id ?? 'project_1',
+        agent,
+        userLabel: state.userName,
+        sourceLabel: getAgentLabel(agent),
+        teamId: 'global',
+        teamLabel: 'Main Workspace',
+        threadLabel: getAgentLabel(agent),
+        actorLabel: getAgentLabel(agent),
+        managerLabel: 'AI General Manager',
+        workerLabel: agent === 'manager' ? undefined : getAgentLabel(agent),
+        versionSource: 'main',
+        versionThreadId: agent,
+      }),
+    });
+    setToast(`Version ${version.versionNumber} saved.`);
+  };
+
   return (
     <div
       data-agent-panel={agent}
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-r last:border-r-0 ${
+      className={`ui-role-panel flex min-h-0 min-w-0 flex-col overflow-hidden border-r last:border-r-0 ${
         isManager
           ? 'ui-manager-panel'
           : 'border-r-neutral-200 bg-white'
-      } ${className ?? ''}`}
+      } ${rolePanelClass} ${className ?? ''}`}
       style={style}
     >
       <div
@@ -277,56 +440,88 @@ export function AgentPanel({
             : 'ui-worker-header'
         }`}
       >
-        <div className="ui-chat-panel-header-row flex flex-wrap items-center gap-2">
-          {editableRole && editingRole ? (
-            <input
-              className="ui-input h-8 min-h-8 flex-1 px-2 text-xs"
-              value={roleInput}
-              onChange={(event) => setRoleInput(event.target.value)}
-              onBlur={() => {
-                dispatch({
-                  type: 'SET_WORKER_ROLE',
-                  worker: agent as 'worker1' | 'worker2',
-                  role: roleInput.trim(),
-                });
-                setEditingRole(false);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  dispatch({
-                    type: 'SET_WORKER_ROLE',
-                    worker: agent as 'worker1' | 'worker2',
-                    role: roleInput.trim(),
-                  });
-                  setEditingRole(false);
-                }
-              }}
-              autoFocus
+        <div className="ui-chat-panel-header-row flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <span
+              aria-hidden="true"
+              className="ui-role-dot"
+              style={{ backgroundColor: roleAccentColor, boxShadow: `0 0 0 4px ${roleAccentSoft}` }}
             />
-          ) : (
-            <button
-              className={`ui-chat-panel-title flex-1 text-left text-[11px] font-semibold tracking-[0.12em] ${
-                editableRole ? 'cursor-pointer' : 'cursor-default'
-              }`}
-              onClick={() => {
-                if (editableRole) {
-                  setEditingRole(true);
-                }
-              }}
-            >
-              {headerLabel}
-            </button>
-          )}
+            <div className="min-w-0 flex-1">
+              {editableRole && editingRole ? (
+                <input
+                  className="ui-input h-8 min-h-8 flex-1 px-2 text-xs"
+                  value={roleInput}
+                  onChange={(event) => setRoleInput(event.target.value)}
+                  onBlur={() => {
+                    dispatch({
+                      type: 'SET_WORKER_ROLE',
+                      worker: agent as 'worker1' | 'worker2',
+                      role: roleInput.trim(),
+                    });
+                    setEditingRole(false);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      dispatch({
+                        type: 'SET_WORKER_ROLE',
+                        worker: agent as 'worker1' | 'worker2',
+                        role: roleInput.trim(),
+                      });
+                      setEditingRole(false);
+                    }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  className={`ui-chat-panel-title w-full text-left text-[11px] font-semibold tracking-[0.12em] ${
+                    editableRole ? 'cursor-pointer' : 'cursor-default'
+                  }`}
+                  onClick={() => {
+                    if (editableRole) {
+                      setEditingRole(true);
+                    }
+                  }}
+                >
+                  {headerLabel}
+                </button>
+              )}
+              <div className="ui-chat-panel-meta">{versionSummary}</div>
+            </div>
+          </div>
 
+          <LockIconButton
+            locked={documentLocked}
+            onClick={() =>
+              dispatch({
+                type: 'SET_DOCUMENT_LOCK',
+                agent,
+                value: !documentLocked,
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <div
+        className={`shrink-0 px-3 pb-1 pt-1 ${
+          isManager ? 'ui-manager-section' : 'ui-worker-section-soft'
+        }`}
+      >
+        <div className="ui-chat-tools-row">
           <button className="ui-chat-prompt shrink-0" onClick={openPromptsLibrary}>
             + Prompts
+          </button>
+          <button className="ui-chat-prompt shrink-0" onClick={() => setShowContextModal(true)}>
+            Upload Context
           </button>
         </div>
       </div>
 
       <div
         ref={viewportRef}
-        className={`ui-chat-viewport scrollbar-thin flex-1 overflow-y-auto px-3 py-3 ${
+        className={`ui-chat-viewport scrollbar-thin flex-1 overflow-y-auto px-3 py-2 ${
           isManager ? 'ui-manager-viewport' : 'ui-worker-viewport'
         }`}
         style={{ minHeight: 0 }}
@@ -426,15 +621,20 @@ export function AgentPanel({
       </div>
 
       <div
-        className={`ui-chat-composer-section shrink-0 px-3 pb-2 pt-1 ${
+        className={`ui-chat-composer-section shrink-0 px-3 pb-0.5 pt-0.5 ${
           isManager ? 'ui-manager-section' : 'ui-worker-section'
         }`}
       >
         <div className="ui-chat-composer">
           <input
             className="ui-chat-composer-input"
-            placeholder={`Message ${MODEL_LABELS[agent]}...`}
+            placeholder={
+              documentLocked
+                ? 'Document locked. Unlock to message this panel.'
+                : `Message ${MODEL_LABELS[agent]}...`
+            }
             value={draft}
+            disabled={documentLocked}
             onChange={(event) =>
               dispatch({ type: 'SET_DRAFT', agent, value: event.target.value })
             }
@@ -446,8 +646,9 @@ export function AgentPanel({
             }}
           />
           <button
-            className="ui-button ui-button-primary ui-chat-send text-xs text-white"
+            className="ui-button ui-button-primary ui-chat-send ui-chat-action-button text-xs text-white disabled:cursor-not-allowed disabled:opacity-45"
             onClick={sendMessage}
+            disabled={documentLocked}
           >
             Send
           </button>
@@ -455,36 +656,37 @@ export function AgentPanel({
       </div>
 
       <div
-        className={`ui-chat-forward-section shrink-0 px-3 pb-2 pt-1 ${
+        className={`ui-chat-forward-section shrink-0 px-3 pb-0.5 pt-0.5 ${
           isManager ? 'ui-manager-section' : 'ui-worker-section-soft'
         }`}
       >
-        <div className="ui-forward-row">
-          <span className="ui-meta shrink-0 text-[11px]">Select messages to forward</span>
+        <div className="ui-forward-stack">
+          <div className="ui-forward-row">
+            <div className="ui-forward-select-wrap">
+              <select
+                className="ui-forward-select"
+                value={forwardTarget}
+                disabled={documentLocked}
+                onChange={(event) => setForwardTarget(event.target.value as AgentRole)}
+              >
+                {targetOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {getAgentLabel(option)}
+                  </option>
+                ))}
+              </select>
+              <span className="ui-forward-select-caret">v</span>
+            </div>
 
-          <div className="ui-forward-select-wrap">
-            <select
-              className="ui-forward-select"
-              value={forwardTarget}
-              onChange={(event) => setForwardTarget(event.target.value as AgentRole)}
+            <button
+              className="ui-button ui-button-primary ui-chat-action-button text-xs text-white disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={handleForward}
+              title="Review and forward selected messages"
+              disabled={documentLocked || selectedIds.length === 0}
             >
-              {targetOptions.map((option) => (
-                <option key={option} value={option}>
-                  {getAgentLabel(option)}
-                </option>
-              ))}
-            </select>
-            <span className="ui-forward-select-caret">v</span>
+              Review & Forward
+            </button>
           </div>
-
-          <button
-            className="ui-button px-3 text-xs text-neutral-700 disabled:cursor-not-allowed disabled:opacity-45"
-            onClick={handleForward}
-            title="Forward selected messages"
-            disabled={selectedIds.length === 0}
-          >
-            Send
-          </button>
         </div>
 
         {(showSaveSelection || selectedIds.length > 0 || contextItems.length > 0) && (
@@ -545,16 +747,23 @@ export function AgentPanel({
 
       {showRefreshAction && (
         <div
-          className={`ui-chat-actions-section shrink-0 px-3 pb-3 pt-1 ${
+          className={`ui-chat-actions-section shrink-0 px-3 pb-2 pt-0 ${
             isManager ? 'ui-manager-section' : 'ui-worker-section'
           }`}
         >
-          <div className="ui-chat-actions-grid grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="ui-chat-actions-grid grid grid-cols-1 gap-1 sm:grid-cols-4">
             <button
               className="ui-button px-3 text-xs text-neutral-700"
               onClick={() => setShowRefreshConfirm(true)}
             >
               Refresh Session
+            </button>
+            <button
+              className="ui-button px-3 text-xs text-neutral-700 disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={handleSaveVersion}
+              disabled={messages.length === 0}
+            >
+              Save Version
             </button>
             <button
               className={`ui-button px-3 text-xs ${
@@ -564,12 +773,18 @@ export function AgentPanel({
             >
               Save / Backup
             </button>
-            <button
-              className="ui-button px-3 text-xs text-neutral-700"
-              onClick={() => setShowContextModal(true)}
-            >
-              Upload Context
-            </button>
+            {auditSourcePage ? (
+              <button
+                className="ui-button ui-button-primary px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-white disabled:cursor-not-allowed disabled:opacity-45"
+                onClick={handleAuditAnswer}
+                disabled={documentLocked || selectedMessages.length === 0}
+                title="Send the selected content to Cross Verification"
+              >
+                Audit AI Answer
+              </button>
+            ) : (
+              <div className="ui-chat-audit-slot">Audit AI Answer</div>
+            )}
           </div>
         </div>
       )}

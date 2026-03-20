@@ -1,10 +1,19 @@
-export type Page = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+export type Page = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 export type AgentRole = 'manager' | 'worker1' | 'worker2';
 export type MessageRole = 'user' | 'agent' | 'system';
 export type FileType = 'Conversation' | 'Document' | 'Report';
 export type AIProvider = 'OpenAI' | 'Anthropic' | 'Google';
 export type TeamsNodeType = 'general_manager' | 'senior_manager' | 'worker';
 export type PromptVisibility = 'public' | 'private';
+export type WorkPhaseState = 'Open' | 'In Review' | 'Closed';
+export type AuditAnswerContentType = 'message-selection';
+export type AuditAnswerSourceAgentType = 'manager' | 'sub-manager' | 'worker';
+export type WorkspaceVersionSource = 'main' | 'team';
+export type AuditAnswerRoutingTargetKind =
+  | 'origin-agent'
+  | 'origin-team-sub-manager'
+  | 'origin-supervisor'
+  | 'cross-verification-sub-manager';
 
 export interface SecondaryWorkspaceTarget {
   teamId: string;
@@ -32,6 +41,7 @@ export interface SavedFile {
   projectId: string;
   agent: AgentRole;
   sourceLabel?: string;
+  phaseState?: WorkPhaseState;
   title: string;
   type: FileType;
   content: string;
@@ -43,10 +53,22 @@ export interface CalendarEvent {
   projectId: string;
   agent: AgentRole;
   sourceLabel?: string;
+  teamId?: string;
+  teamLabel?: string;
+  userLabel?: string;
+  actorLabel?: string;
+  managerLabel?: string;
+  workerLabel?: string;
+  actionLabel?: string;
+  outputLabel?: string;
+  phaseState?: WorkPhaseState;
   fileId: string;
   title: string;
   date: string;
   time: string;
+  versionId?: string;
+  versionSource?: WorkspaceVersionSource;
+  versionThreadId?: string;
 }
 
 export interface WorkerConfig {
@@ -65,6 +87,7 @@ export interface TeamsGraphNode {
   provider: AIProvider;
   parentId: string | null;
   teamId: string;
+  phaseState?: WorkPhaseState;
 }
 
 export interface TeamFolderItem {
@@ -76,6 +99,7 @@ export interface TeamFolderItem {
   createdAt?: string;
   fileType?: FileType;
   linkedFileId?: string;
+  phaseState?: WorkPhaseState;
 }
 
 export interface PromptItem {
@@ -91,6 +115,56 @@ export interface PromptItem {
   updatedAt: string;
 }
 
+export interface WorkspaceVersion {
+  id: string;
+  versionNumber: number;
+  savedAt: string;
+  label?: string;
+  messageCount: number;
+  locked: boolean;
+  draft: string;
+  snapshotContent: string;
+}
+
+export interface WorkspaceVersionReference {
+  source: WorkspaceVersionSource;
+  versionId: string;
+  threadId: string;
+  agent?: AgentRole;
+  teamId?: string;
+}
+
+export interface AuditAnswerRoutingTarget {
+  id: string;
+  kind: AuditAnswerRoutingTargetKind;
+  label: string;
+  page: Page;
+  sourceArea: 'main-workspace' | 'team-workspace' | 'cross-verification';
+  teamId?: string;
+  teamLabel?: string;
+  workspace?: SecondaryWorkspaceTarget | null;
+  agentRole?: AgentRole;
+  workerId?: string;
+}
+
+export interface AuditAnswerPayload {
+  sourcePage: Page;
+  sourceWorkspace: SecondaryWorkspaceTarget | null;
+  sourceArea: 'main-workspace' | 'team-workspace';
+  sourceAgentId: string;
+  sourceAgentLabel: string;
+  sourceAgentType: AuditAnswerSourceAgentType;
+  sourceTeamId: string;
+  sourceTeamLabel: string;
+  sourceReturnTarget: AuditAnswerRoutingTarget;
+  sourceTeamManagerTarget?: AuditAnswerRoutingTarget | null;
+  sourceSupervisorTarget?: AuditAnswerRoutingTarget | null;
+  contentType: AuditAnswerContentType;
+  selectedCount: number;
+  messageIds: string[];
+  content: string;
+}
+
 export interface AppState {
   currentPage: Page;
   projectName: string;
@@ -98,6 +172,8 @@ export interface AppState {
   messages: Record<AgentRole, Message[]>;
   selectedMessages: Record<AgentRole, string[]>;
   drafts: Record<AgentRole, string>;
+  documentLocks: Record<AgentRole, boolean>;
+  workspaceVersions: Record<AgentRole, WorkspaceVersion[]>;
   projects: Project[];
   savedFiles: SavedFile[];
   calendarEvents: CalendarEvent[];
@@ -108,4 +184,7 @@ export interface AppState {
   workerConfigs: WorkerConfig[];
   workspaceFocusAgent: AgentRole | null;
   secondaryWorkspace: SecondaryWorkspaceTarget | null;
+  auditAnswerPayload: AuditAnswerPayload | null;
+  crossVerificationDraft: string;
+  selectedWorkspaceVersion: WorkspaceVersionReference | null;
 }

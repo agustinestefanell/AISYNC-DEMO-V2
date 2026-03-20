@@ -1,4 +1,5 @@
 import type { SavedFile } from '../types';
+import { getWorkPhaseClassName, getWorkPhaseState } from '../phaseState';
 import { Modal } from './Modal';
 
 interface FileViewerProps {
@@ -21,6 +22,7 @@ function getAgentLabel(agent: SavedFile['agent']) {
 
 export function FileViewer({ file, projectName, onClose }: FileViewerProps) {
   const createdAt = new Date(file.createdAt);
+  const phaseState = getWorkPhaseState(file.phaseState);
 
   return (
     <Modal
@@ -28,7 +30,7 @@ export function FileViewer({ file, projectName, onClose }: FileViewerProps) {
       onClose={onClose}
       width="max-w-3xl"
     >
-      <div className="mb-5 grid gap-3 border-b border-neutral-200/80 pb-4 text-xs text-neutral-600 md:grid-cols-4">
+      <div className="mb-5 grid gap-3 border-b border-neutral-200/80 pb-4 text-xs text-neutral-600 md:grid-cols-5">
         <div>
           <span className="block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
             Project
@@ -48,6 +50,12 @@ export function FileViewer({ file, projectName, onClose }: FileViewerProps) {
             Type
           </span>
           <span className="font-medium text-neutral-900">{file.type}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+            State
+          </span>
+          <span className={getWorkPhaseClassName(phaseState)}>{phaseState}</span>
         </div>
         <div>
           <span className="block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
