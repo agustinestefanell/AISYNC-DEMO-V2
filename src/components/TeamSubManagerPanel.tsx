@@ -426,11 +426,7 @@ export function TeamSubManagerPanel({
 
       <div
         className="ui-chat-composer-section shrink-0 px-3 pb-0.5 pt-0.5"
-        style={{
-          backgroundColor: theme.soft,
-          borderTopColor: theme.border,
-          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
-        }}
+        style={{ backgroundColor: theme.soft }}
       >
         <div className="ui-chat-composer">
           <input
@@ -462,11 +458,7 @@ export function TeamSubManagerPanel({
 
       <div
         className="ui-chat-forward-section shrink-0 px-3 pb-0.5 pt-0.5"
-        style={{
-          backgroundColor: theme.soft,
-          borderTopColor: theme.border,
-          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
-        }}
+        style={{ backgroundColor: theme.soft }}
       >
         <div className="ui-forward-stack">
           <div className="ui-forward-row">
@@ -543,11 +535,7 @@ export function TeamSubManagerPanel({
 
       <div
         className="ui-chat-actions-section shrink-0 px-3 pb-2 pt-0"
-        style={{
-          backgroundColor: theme.soft,
-          borderTopColor: theme.border,
-          boxShadow: `inset 0 1px 0 ${theme.ribbon}22`,
-        }}
+        style={{ backgroundColor: theme.soft }}
       >
         <div className="ui-chat-actions-grid grid grid-cols-1 gap-1 sm:grid-cols-4">
           <button

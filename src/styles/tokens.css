@@ -22,12 +22,15 @@
   --color-role-manager-accent: #2563eb;
   --color-role-manager-soft: rgba(37, 99, 235, 0.08);
   --color-role-manager-border: rgba(37, 99, 235, 0.18);
+  --color-role-manager-footer: rgba(37, 99, 235, 0.055);
   --color-role-worker1-accent: #0f766e;
   --color-role-worker1-soft: rgba(15, 118, 110, 0.08);
   --color-role-worker1-border: rgba(15, 118, 110, 0.18);
+  --color-role-worker1-footer: rgba(15, 118, 110, 0.05);
   --color-role-worker2-accent: #9a3412;
   --color-role-worker2-soft: rgba(154, 52, 18, 0.08);
   --color-role-worker2-border: rgba(154, 52, 18, 0.18);
+  --color-role-worker2-footer: rgba(154, 52, 18, 0.05);
   --color-phase-open-accent: #0f766e;
   --color-phase-open-soft: rgba(15, 118, 110, 0.08);
   --color-phase-open-border: rgba(15, 118, 110, 0.18);
@@ -627,28 +630,26 @@ input[type="file"].ui-input {
 .ui-chat-composer-section,
 .ui-chat-forward-section,
 .ui-chat-actions-section {
-  border-top: 1px solid transparent;
+  border-top: 0;
+  background: var(--color-surface);
 }
 
 .ui-role-panel-manager .ui-chat-composer-section,
 .ui-role-panel-manager .ui-chat-forward-section,
 .ui-role-panel-manager .ui-chat-actions-section {
-  border-top-color: var(--color-role-manager-border);
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.04), rgba(37, 99, 235, 0.07));
+  background: var(--color-role-manager-footer);
 }
 
 .ui-role-panel-worker1 .ui-chat-composer-section,
 .ui-role-panel-worker1 .ui-chat-forward-section,
 .ui-role-panel-worker1 .ui-chat-actions-section {
-  border-top-color: var(--color-role-worker1-border);
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.035), rgba(15, 118, 110, 0.065));
+  background: var(--color-role-worker1-footer);
 }
 
 .ui-role-panel-worker2 .ui-chat-composer-section,
 .ui-role-panel-worker2 .ui-chat-forward-section,
 .ui-role-panel-worker2 .ui-chat-actions-section {
-  border-top-color: var(--color-role-worker2-border);
-  background: linear-gradient(180deg, rgba(154, 52, 18, 0.035), rgba(154, 52, 18, 0.065));
+  background: var(--color-role-worker2-footer);
 }
 
 .ui-selection-ring {
