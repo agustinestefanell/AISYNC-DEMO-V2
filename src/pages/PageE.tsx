@@ -4,6 +4,7 @@ import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
 import { useApp } from '../context';
 import { DividerRail } from '../components/DividerRail';
+import { getSecondarySubManagerLabel } from '../pageLabels';
 import type { PromptItem, PromptVisibility } from '../types';
 
 const PRIVATE_PROMPTS_KEY = 'aisync_private_prompts_v1';
@@ -60,12 +61,12 @@ function buildPublicPrompts(): PromptItem[] {
       visibility: 'public',
       collection: 'AISync Workflows',
       code: 'EO-OPS-002',
-      title: 'Cross Verification Manager - Demo Note / Prompt Reference',
+      title: 'Cross Verification Sub-Manager - Demo Note / Prompt Reference',
       description:
         'Reference note for coordinating cross-verification without collapsing disagreement too early.',
       tags: ['cross-verification', 'manager', 'comparison', 'human-review'],
       promptText:
-        'Cross Verification Manager - Role\n\n- Receive one user question, topic, or claim.\n- Dispatch the same query to all assigned Workers.\n- Compare the responses without assuming consensus equals correctness.\n- Highlight where the models agree.\n- Highlight where they differ.\n- Identify what remains uncertain.\n- Indicate what should be verified externally.\n- Propose a final synthesis only after comparison.\n- Wait for human confirmation when needed before closing the process.\n\nThe Manager should not act as a simple auto-forwarder. Its role is to structure comparison, preserve divergence, surface uncertainty, and help the user reach a traceable final synthesis under human review.',
+        'Cross Verification Sub-Manager - Role\n\n- Receive one user question, topic, or claim.\n- Dispatch the same query to all assigned Workers.\n- Compare the responses without assuming consensus equals correctness.\n- Highlight where the models agree.\n- Highlight where they differ.\n- Identify what remains uncertain.\n- Indicate what should be verified externally.\n- Propose a final synthesis only after comparison.\n- Wait for human confirmation when needed before closing the process.\n\nThe Sub-Manager should not act as a simple auto-forwarder. Its role is to structure comparison, preserve divergence, surface uncertainty, and help the user reach a traceable final synthesis under human review.',
       usageCount: 6,
       updatedAt: '2026-03-06T19:10:00.000Z',
     },
@@ -255,6 +256,7 @@ function formatDate(value: string) {
 
 export function PageE() {
   const { state, dispatch } = useApp();
+  const subManagerLabel = getSecondarySubManagerLabel('E');
   const [showManagerMobile, setShowManagerMobile] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [publicPrompts, setPublicPrompts] = useState<PromptItem[]>(buildPublicPrompts);
@@ -388,7 +390,7 @@ export function PageE() {
 
     dispatch({ type: 'SET_DRAFT', agent: 'manager', value: nextValue });
     touchPrompt(prompt.id, prompt.visibility);
-    setToast('Inserted into Manager');
+    setToast(`Inserted into ${subManagerLabel}`);
   };
 
   const handleCopyPrompt = async (prompt: PromptItem) => {
@@ -618,7 +620,7 @@ export function PageE() {
                 {filteredPrompts.length} prompt{filteredPrompts.length === 1 ? '' : 's'} visible
               </div>
               <div className="text-xs text-neutral-500">
-                Manager draft length: {state.drafts.manager.length} chars
+                Sub-Manager draft length: {state.drafts.manager.length} chars
               </div>
             </div>
 
@@ -709,19 +711,19 @@ export function PageE() {
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2">
         <div className="ui-surface app-short-landscape-flex flex items-center justify-between gap-3 px-3 py-2 sm:hidden">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-            Manager Panel
+            Sub-Manager Panel
           </div>
           <button
             className="ui-button min-h-9 px-3 text-xs text-neutral-700"
             onClick={() => setShowManagerMobile((value) => !value)}
           >
-            {showManagerMobile ? 'Hide Manager' : 'Show Manager'}
+            {showManagerMobile ? 'Hide Sub-Manager' : 'Show Sub-Manager'}
           </button>
         </div>
 
         {showManagerMobile && (
           <div className="app-frame app-short-landscape-flex flex h-[46dvh] min-h-0 overflow-hidden sm:hidden">
-            <AgentPanel agent="manager" />
+            <AgentPanel agent="manager" managerDisplayName={subManagerLabel} />
           </div>
         )}
 
@@ -730,7 +732,11 @@ export function PageE() {
         </div>
 
         <div className="app-frame app-short-landscape-hide hidden min-h-0 flex-1 overflow-hidden sm:flex">
-          <AgentPanel agent="manager" className="w-[280px] shrink-0 md:w-[320px] lg:w-[432px]" />
+          <AgentPanel
+            agent="manager"
+            managerDisplayName={subManagerLabel}
+            className="w-[280px] shrink-0 md:w-[320px] lg:w-[432px]"
+          />
           <DividerRail />
           {promptsContent}
         </div>

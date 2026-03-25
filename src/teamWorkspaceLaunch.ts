@@ -1,9 +1,11 @@
 import type { SecondaryWorkspaceTarget } from './types';
+import type { TeamsMapState } from './data/teams';
 
 const TEAM_WORKSPACE_LAUNCH_PREFIX = 'aisync_team_workspace_launch_';
 
 interface StoredTeamWorkspaceLaunch {
   workspace: SecondaryWorkspaceTarget;
+  teamsStateSnapshot?: TeamsMapState;
   createdAt: string;
 }
 
@@ -37,7 +39,7 @@ export function readTeamWorkspaceLaunch(launchId: string) {
   }
 }
 
-export function openTeamWorkspaceWindow(workspace: SecondaryWorkspaceTarget) {
+export function openTeamWorkspaceWindow(workspace: SecondaryWorkspaceTarget, teamsStateSnapshot?: TeamsMapState) {
   if (typeof window === 'undefined') {
     return false;
   }
@@ -49,6 +51,7 @@ export function openTeamWorkspaceWindow(workspace: SecondaryWorkspaceTarget) {
       getLaunchStorageKey(launchId),
       JSON.stringify({
         workspace,
+        teamsStateSnapshot,
         createdAt: new Date().toISOString(),
       } satisfies StoredTeamWorkspaceLaunch),
     );

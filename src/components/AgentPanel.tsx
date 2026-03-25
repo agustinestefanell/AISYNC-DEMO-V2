@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { buildMainWorkspaceAuditAnswerPayload } from '../auditRouting';
 import { useApp } from '../context';
 import { openCrossVerificationWindow } from '../crossVerificationLaunch';
+import { appendMessageToTeamManagerThread } from '../crossVerificationRouting';
+import {
+  getAgentPanelForwardTargets,
+  isValidAgentPanelForwardTarget,
+} from '../reviewForwardPolicy';
 import type { AgentRole, FileType, Message } from '../types';
 import {
   createWorkspaceVersion,
@@ -20,15 +26,9 @@ const MODEL_LABELS: Record<AgentRole, string> = {
 };
 
 const PANEL_NAMES: Record<AgentRole, string> = {
-  manager: 'PROJECT MANAGER',
+  manager: 'AI General Manager',
   worker1: 'Worker 1',
   worker2: 'Worker 2',
-};
-
-const FORWARD_DEFAULTS: Record<AgentRole, AgentRole> = {
-  manager: 'worker1',
-  worker1: 'worker2',
-  worker2: 'manager',
 };
 
 const STUB_REPLIES: Record<AgentRole, string[]> = {
@@ -72,12 +72,6 @@ function buildSaveContent(messages: Message[]) {
     .join('\n\n');
 }
 
-function buildAuditContent(messages: Message[]) {
-  return messages
-    .map((message) => `${message.senderLabel}: ${message.content.trim()}`)
-    .join('\n\n');
-}
-
 function buildForwardedContent(messages: Message[], sourceLabel: string) {
   const body = messages
     .map((message) => `${message.senderLabel}: ${message.content.trim()}`)
@@ -92,6 +86,7 @@ export interface AgentPanelProps {
   showRefreshAction?: boolean;
   editableRole?: boolean;
   auditSourcePage?: 'A';
+  managerDisplayName?: string;
   className?: string;
   style?: CSSProperties;
 }
@@ -101,6 +96,7 @@ export function AgentPanel({
   showRefreshAction = true,
   editableRole = false,
   auditSourcePage,
+  managerDisplayName,
   className,
   style,
 }: AgentPanelProps) {
@@ -141,18 +137,15 @@ export function AgentPanel({
     agent === 'manager' ? '' : state.workerRoles[agent],
   );
   const [editingRole, setEditingRole] = useState(false);
-  const [forwardTarget, setForwardTarget] = useState<AgentRole>(FORWARD_DEFAULTS[agent]);
+  const [forwardTarget, setForwardTarget] = useState('');
   const [fileTitle, setFileTitle] = useState('');
   const [fileType, setFileType] = useState<FileType>('Conversation');
   const [projectId, setProjectId] = useState(state.projects[0]?.id ?? '');
   const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
 
   const targetOptions = useMemo(
-    () =>
-      (['manager', 'worker1', 'worker2'] as AgentRole[]).filter(
-        (option) => option !== agent,
-      ),
-    [agent],
+    () => getAgentPanelForwardTargets(agent, managerDisplayName),
+    [agent, managerDisplayName],
   );
   const selectedMessages = useMemo(
     () => messages.filter((message) => selectedIds.includes(message.id)),
@@ -193,14 +186,20 @@ export function AgentPanel({
     }
   }, [selectedMessages.length, showSaveModal]);
 
+  useEffect(() => {
+    if (!targetOptions.some((option) => option.id === forwardTarget)) {
+      setForwardTarget(targetOptions[0]?.id ?? '');
+    }
+  }, [forwardTarget, targetOptions]);
+
   const headerLabel = useMemo(() => {
     if (agent === 'manager') {
-      return `${PANEL_NAMES.manager} | ${MODEL_LABELS.manager}`;
+      return `${managerDisplayName ?? PANEL_NAMES.manager} | ${MODEL_LABELS.manager}`;
     }
 
     const roleValue = state.workerRoles[agent] || '';
     return `${PANEL_NAMES[agent]} - ${roleValue} | ${MODEL_LABELS[agent]} | (Click to set this role)`;
-  }, [agent, state.workerRoles]);
+  }, [agent, managerDisplayName, state.workerRoles]);
 
   const sendMessage = () => {
     if (documentLocked) {
@@ -255,27 +254,65 @@ export function AgentPanel({
       return;
     }
 
+    if (!isValidAgentPanelForwardTarget(agent, forwardTarget, managerDisplayName)) {
+      setToast('Choose a valid destination inside the current review hierarchy.');
+      return;
+    }
+
+    const target =
+      targetOptions.find((option) => option.id === forwardTarget) ?? null;
+    if (!target) {
+      setToast('Choose a valid destination inside the current review hierarchy.');
+      return;
+    }
+
     const orderedMessages = messages.filter((message) => selectedIds.includes(message.id));
     const sourceLabel = getAgentLabel(agent).toUpperCase();
     const forwardedContent = buildForwardedContent(orderedMessages, sourceLabel);
+    const forwardedMessage: Message = {
+      id: createMessageId(),
+      role: 'system',
+      content: forwardedContent,
+      timestamp: getNowTime(),
+      agent: target.agentRole ?? 'manager',
+      senderLabel: 'System',
+      variant: 'forwarded',
+    };
 
-    dispatch({
-      type: 'ADD_MESSAGE',
-      agent: forwardTarget,
-      message: {
-        id: createMessageId(),
-        role: 'system',
-        content: forwardedContent,
-        timestamp: getNowTime(),
-        agent: forwardTarget,
-        senderLabel: 'System',
-        variant: 'forwarded',
-      },
-    });
+    if (target.kind === 'main-worker' && target.agentRole) {
+      dispatch({
+        type: 'ADD_MESSAGE',
+        agent: target.agentRole,
+        message: {
+          ...forwardedMessage,
+          agent: target.agentRole,
+        },
+      });
+    } else if (target.kind === 'general-manager' && target.agentRole) {
+      dispatch({
+        type: 'ADD_MESSAGE',
+        agent: target.agentRole,
+        message: {
+          ...forwardedMessage,
+          agent: target.agentRole,
+        },
+      });
+    } else if (target.kind === 'team-sub-manager' && target.teamId) {
+      appendMessageToTeamManagerThread(target.teamId, {
+        id: forwardedMessage.id,
+        role: forwardedMessage.role,
+        content: forwardedMessage.content,
+        timestamp: forwardedMessage.timestamp,
+        senderLabel: forwardedMessage.senderLabel,
+        variant: forwardedMessage.variant,
+      });
+    } else {
+      setToast('That destination is blocked by the current review hierarchy.');
+      return;
+    }
+
     dispatch({ type: 'CLEAR_SELECTION', agent });
-    setToast(
-      `Reviewed & forwarded ${orderedMessages.length} message(s) to ${getAgentLabel(forwardTarget)}.`,
-    );
+    setToast(`Reviewed & forwarded ${orderedMessages.length} message(s) to ${target.label}.`);
   };
 
   const handleAuditAnswer = () => {
@@ -288,56 +325,12 @@ export function AgentPanel({
       return;
     }
 
-    const payload = {
-      sourcePage: auditSourcePage,
-      sourceWorkspace: null,
-      sourceArea: 'main-workspace' as const,
-      sourceAgentId: agent,
-      sourceAgentLabel: getAgentLabel(agent),
-      sourceAgentType: agent === 'manager' ? 'manager' as const : 'worker' as const,
-      sourceTeamId: 'main_workspace',
-      sourceTeamLabel: 'Main Workspace',
-      sourceReturnTarget: {
-        id: `main_workspace:${agent}`,
-        kind: 'origin-agent' as const,
-        label: getAgentLabel(agent),
-        page: auditSourcePage,
-        sourceArea: 'main-workspace' as const,
-        teamId: 'main_workspace',
-        teamLabel: 'Main Workspace',
-        agentRole: agent,
-      },
-      sourceTeamManagerTarget:
-        agent === 'manager'
-          ? null
-          : {
-              id: 'main_workspace:manager',
-              kind: 'origin-team-sub-manager' as const,
-              label: 'AI General Manager',
-              page: auditSourcePage,
-              sourceArea: 'main-workspace' as const,
-              teamId: 'main_workspace',
-              teamLabel: 'Main Workspace',
-              agentRole: 'manager' as const,
-            },
-      sourceSupervisorTarget:
-        agent === 'manager'
-          ? null
-          : {
-              id: 'main_workspace:manager',
-              kind: 'origin-supervisor' as const,
-              label: 'AI General Manager',
-              page: auditSourcePage,
-              sourceArea: 'main-workspace' as const,
-              teamId: 'main_workspace',
-              teamLabel: 'Main Workspace',
-              agentRole: 'manager' as const,
-            },
-      contentType: 'message-selection' as const,
-      selectedCount: selectedMessages.length,
-      messageIds: selectedMessages.map((message) => message.id),
-      content: buildAuditContent(selectedMessages),
-    };
+    const payload = buildMainWorkspaceAuditAnswerPayload({
+      page: auditSourcePage,
+      agent,
+      managerDisplayName,
+      selectedMessages,
+    });
 
     if (openCrossVerificationWindow(payload)) {
       setToast('Cross Verification opened in a new window.');
@@ -667,11 +660,11 @@ export function AgentPanel({
                 className="ui-forward-select"
                 value={forwardTarget}
                 disabled={documentLocked}
-                onChange={(event) => setForwardTarget(event.target.value as AgentRole)}
+                onChange={(event) => setForwardTarget(event.target.value)}
               >
                 {targetOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {getAgentLabel(option)}
+                  <option key={option.id} value={option.id}>
+                    {option.label}
                   </option>
                 ))}
               </select>

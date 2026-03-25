@@ -3,10 +3,24 @@ import { Modal } from '../components/Modal';
 import { SaveBackupModal } from '../components/SaveBackupModal';
 import { Toast } from '../components/Toast';
 import { DividerRail } from '../components/DividerRail';
+import {
+  buildCrossVerificationSubManagerRoutingTarget,
+  buildGeneralManagerRoutingTarget,
+  buildTeamSubManagerRoutingTarget,
+  buildTeamWorkerRoutingTarget,
+} from '../auditRouting';
 import { useApp } from '../context';
 import {
   appendMessageToTeamManagerThread,
   appendMessageToTeamWorker,
+  clearCrossVerificationSessionState,
+  getCrossVerificationSessionState,
+  getWorkspaceThreadState,
+  saveCrossVerificationSessionState,
+  setSecondaryWorkspaceFocusThread,
+  setWorkspaceThreadState,
+  TEAM_MANAGER_THREAD_ID,
+  type RoutedWorkspaceMessage,
 } from '../crossVerificationRouting';
 import {
   getCrossVerificationLaunchIdFromLocation,
@@ -14,6 +28,10 @@ import {
 } from '../crossVerificationLaunch';
 import { CROSS_VERIFICATION_TEAM_ID, getTeamTheme } from '../data/teams';
 import { getPageLabel } from '../pageLabels';
+import {
+  getCrossVerificationForwardTargets,
+  isValidAuditRoutingTargetForReviewForward,
+} from '../reviewForwardPolicy';
 import type {
   AuditAnswerPayload,
   AuditAnswerRoutingTarget,
@@ -63,6 +81,28 @@ interface ChooseAnswerDestinationState {
   definition: WorkerDefinition;
 }
 
+interface CrossVerificationCaseOrigin {
+  sourceAgentId: string;
+  sourceAgentLabel: string;
+  sourceAgentType: AuditAnswerPayload['sourceAgentType'];
+  sourceTeamId: string;
+  sourceTeamLabel: string;
+}
+
+interface CrossVerificationPersistedState {
+  contextSignature: string;
+  activePanel: WorkspacePanelId;
+  verificationStage: VerificationStage;
+  verificationRequest: string;
+  caseOrigin: CrossVerificationCaseOrigin | null;
+  caseReturnTargets: AuditAnswerRoutingTarget[];
+  workerResults: Record<WorkspacePanelId, WorkerResult | null>;
+  managerResult: ManagerResult | null;
+  chosenWorkerAnswer: ChosenWorkerAnswer | null;
+  lastVerifiedInput: string;
+  lastVerifiedAt: string;
+}
+
 const WORKER_DEFINITIONS: WorkerDefinition[] = [
   {
     id: 'worker_a',
@@ -104,13 +144,24 @@ function summarizeClaim(input: string) {
 }
 
 function getOriginWorkspaceLabel(payload: AuditAnswerPayload) {
-  if (payload.sourceArea === 'main-workspace') {
+  if (
+    payload.sourceArea === 'main-workspace' &&
+    payload.sourceAgentType === 'general-manager'
+  ) {
     return 'Main Workspace';
+  }
+
+  if (payload.sourceArea === 'main-workspace' && payload.sourceAgentType === 'sub-manager') {
+    return `Secondary Page | ${payload.sourceTeamLabel}`;
+  }
+
+  if (payload.sourceArea === 'main-workspace') {
+    return 'Main Workspace | Worker Lane';
   }
 
   return payload.sourceWorkspace?.label
     ? `Team Workspace | ${payload.sourceWorkspace.label}`
-    : 'Team Workspace';
+    : `Team Workspace | ${payload.sourceTeamLabel}`;
 }
 
 function getOriginSectionLabel(payload: AuditAnswerPayload) {
@@ -118,7 +169,29 @@ function getOriginSectionLabel(payload: AuditAnswerPayload) {
     return `Secondary Workspace | ${payload.sourceWorkspace.label}`;
   }
 
+  if (payload.sourceAgentType === 'sub-manager' && payload.sourcePage !== 'F') {
+    return `Sub-Manager | ${getPageLabel(payload.sourcePage)}`;
+  }
+
+  if (payload.sourceAgentType === 'worker' && payload.sourcePage === 'A') {
+    return 'Main Workspace | Worker Thread';
+  }
+
   return getPageLabel(payload.sourcePage);
+}
+
+function getOriginContextSummary({
+  originAgentLabel,
+  originWorkspaceLabel,
+  originSectionLabel,
+  inputModeLabel,
+}: {
+  originAgentLabel: string;
+  originWorkspaceLabel: string;
+  originSectionLabel: string;
+  inputModeLabel: string;
+}) {
+  return `Audit context loaded from ${originAgentLabel}. Workspace: ${originWorkspaceLabel}. Section: ${originSectionLabel}. Input mode: ${inputModeLabel}. Run Verify to compare both workers, then use the sub-manager thread for follow-up questions, review, forward, or backup.`;
 }
 
 function buildVerificationResults(input: string, payload: AuditAnswerPayload | null) {
@@ -188,6 +261,32 @@ function createCrossVerificationMessage(
   };
 }
 
+function buildEmptyWorkerResults(): Record<WorkspacePanelId, WorkerResult | null> {
+  return {
+    manager: null,
+    worker_a: null,
+    worker_b: null,
+  };
+}
+
+function toWorkspaceMessages(messages: Message[]): RoutedWorkspaceMessage[] {
+  return messages.map(({ id, role, content, timestamp, senderLabel, variant }) => ({
+    id,
+    role,
+    content,
+    timestamp,
+    senderLabel,
+    variant,
+  }));
+}
+
+function toManagerMessages(messages: RoutedWorkspaceMessage[]): Message[] {
+  return messages.map((message) => ({
+    ...message,
+    agent: 'manager' as const,
+  }));
+}
+
 function buildManagerSeedMessages({
   hasPayload,
   brief,
@@ -208,7 +307,12 @@ function buildManagerSeedMessages({
       'system',
       'System',
       hasPayload
-        ? `Audit context loaded from ${originAgentLabel} in ${originWorkspaceLabel} (${originSectionLabel}). Input mode: ${inputModeLabel}. Run Verify to compare both workers, then use the sub-manager thread for follow-up questions, review, forward, or backup.`
+        ? getOriginContextSummary({
+            originAgentLabel,
+            originWorkspaceLabel,
+            originSectionLabel,
+            inputModeLabel,
+          })
         : 'Cross Verification is ready. Enter a verification brief, run Verify to compare both workers, and use the sub-manager thread for follow-up questions or final routing.',
     ),
   ];
@@ -369,32 +473,74 @@ function createCrossVerificationRoutingMessage(
   return createCrossVerificationMessage('system', 'System', content, variant);
 }
 
+function toRoutedWorkspaceMessage(message: Message): RoutedWorkspaceMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp,
+    senderLabel: message.senderLabel,
+    variant: message.variant,
+  };
+}
+
 function getRoutingTargetOptionLabel(target: AuditAnswerRoutingTarget) {
-  if (target.kind === 'origin-agent') {
+  if (target.kind === 'worker') {
     return `Return to ${target.label}`;
   }
 
-  if (target.kind === 'origin-team-sub-manager') {
+  if (target.kind === 'sub-manager') {
     return target.label;
   }
 
-  if (target.kind === 'origin-supervisor') {
+  if (target.kind === 'general-manager') {
     return target.label;
   }
 
-  return 'Cross Verification Sub-Manager';
+  return target.label;
+}
+
+function buildCaseReturnTargets(targets: Array<AuditAnswerRoutingTarget | null | undefined>) {
+  return dedupeRoutingTargets(targets);
+}
+
+function buildCaseOrigin(
+  payload: AuditAnswerPayload | null,
+  isSeedMode: boolean,
+): CrossVerificationCaseOrigin | null {
+  if (payload) {
+    return {
+      sourceAgentId: payload.sourceAgentId,
+      sourceAgentLabel: payload.sourceAgentLabel,
+      sourceAgentType: payload.sourceAgentType,
+      sourceTeamId: payload.sourceTeamId,
+      sourceTeamLabel: payload.sourceTeamLabel,
+    };
+  }
+
+  if (isSeedMode) {
+    return {
+      sourceAgentId: DEMO_SEED_WORKER_ID,
+      sourceAgentLabel: 'W-LC01',
+      sourceAgentType: 'worker',
+      sourceTeamId: DEMO_SEED_TEAM_ID,
+      sourceTeamLabel: DEMO_SEED_TEAM_LABEL,
+    };
+  }
+
+  return null;
 }
 
 function getChooseTargetButtonLabel(target: AuditAnswerRoutingTarget) {
-  if (target.kind === 'cross-verification-sub-manager') {
+  if (target.kind === 'sub-manager' && target.sourceArea === 'cross-verification') {
     return 'Send to Cross Verification Sub-Manager';
   }
 
-  if (target.kind === 'origin-agent') {
+  if (target.kind === 'worker') {
     return `Send to ${target.label}`;
   }
 
-  if (target.kind === 'origin-team-sub-manager') {
+  if (target.kind === 'sub-manager') {
     return `Send to ${target.label}`;
   }
 
@@ -956,19 +1102,17 @@ export function PageG() {
   const [activePanel, setActivePanel] = useState<WorkspacePanelId>('manager');
   const [verificationStage, setVerificationStage] = useState<VerificationStage>('ready');
   const [verificationRequest, setVerificationRequest] = useState('');
-  const [workerResults, setWorkerResults] = useState<Record<WorkspacePanelId, WorkerResult | null>>({
-    manager: null,
-    worker_a: null,
-    worker_b: null,
-  });
+  const [workerResults, setWorkerResults] = useState<Record<WorkspacePanelId, WorkerResult | null>>(
+    buildEmptyWorkerResults,
+  );
   const [managerResult, setManagerResult] = useState<ManagerResult | null>(null);
   const [chosenWorkerAnswer, setChosenWorkerAnswer] = useState<ChosenWorkerAnswer | null>(null);
+  const [caseReturnTargets, setCaseReturnTargets] = useState<AuditAnswerRoutingTarget[]>([]);
   const [lastVerifiedInput, setLastVerifiedInput] = useState('');
   const [lastVerifiedAt, setLastVerifiedAt] = useState('');
   const [managerMessages, setManagerMessages] = useState<Message[]>([]);
   const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
   const [managerChatDraft, setManagerChatDraft] = useState('');
-  const [managerTouched, setManagerTouched] = useState(false);
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
   const [showSaveSelection, setShowSaveSelection] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -979,6 +1123,7 @@ export function PageG() {
   const [fileType, setFileType] = useState<FileType>('Conversation');
   const [projectId, setProjectId] = useState(state.projects[0]?.id ?? '');
   const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
+  const [hydratedContextSignature, setHydratedContextSignature] = useState('');
   const demoSeed = useMemo(buildDemoSeedScenario, []);
 
   useEffect(() => {
@@ -1001,45 +1146,47 @@ export function PageG() {
       teamId: DEMO_SEED_TEAM_ID,
       label: DEMO_SEED_TEAM_LABEL,
       color: getTeamTheme(DEMO_SEED_TEAM_ID).ribbon,
+      nodeId: `${DEMO_SEED_TEAM_ID}_sm`,
+      nodeType: 'senior_manager' as const,
+      rootNodeId: `${DEMO_SEED_TEAM_ID}_sm`,
+      focusNodeId: `${DEMO_SEED_TEAM_ID}_sm`,
     }),
     [],
   );
   const demoOriginTargets = useMemo(
     () =>
       ({
-        sourceReturnTarget: {
-          id: `${DEMO_SEED_TEAM_ID}:${DEMO_SEED_WORKER_ID}`,
-          kind: 'origin-agent' as const,
-          label: 'W-LC01',
-          page: 'F' as const,
-          sourceArea: 'team-workspace' as const,
+        sourceReturnTarget: buildTeamWorkerRoutingTarget({
+          page: 'F',
           teamId: DEMO_SEED_TEAM_ID,
           teamLabel: DEMO_SEED_TEAM_LABEL,
           workspace: demoWorkspaceTarget,
           workerId: DEMO_SEED_WORKER_ID,
-        },
-        sourceTeamManagerTarget: {
-          id: `${DEMO_SEED_TEAM_ID}:sub-manager`,
-          kind: 'origin-team-sub-manager' as const,
-          label: 'SM-Legal Sub-Manager',
-          page: 'F' as const,
-          sourceArea: 'team-workspace' as const,
+          workerLabel: 'W-LC01',
+        }),
+        sourcePrimarySubManagerTarget: buildTeamSubManagerRoutingTarget({
+          page: 'F',
           teamId: DEMO_SEED_TEAM_ID,
           teamLabel: DEMO_SEED_TEAM_LABEL,
           workspace: demoWorkspaceTarget,
-        },
-        sourceSupervisorTarget: {
-          id: 'main_workspace:manager',
-          kind: 'origin-supervisor' as const,
-          label: 'AI General Manager',
-          page: 'A' as const,
-          sourceArea: 'main-workspace' as const,
-          teamId: 'main_workspace',
-          teamLabel: 'Main Workspace',
-          agentRole: 'manager' as const,
-        },
+          label: 'SM-Legal Sub-Manager',
+        }),
+        sourceGeneralManagerTarget: buildGeneralManagerRoutingTarget('A'),
       }),
     [demoWorkspaceTarget],
+  );
+  const initialCaseReturnTargets = useMemo(
+    () =>
+      buildCaseReturnTargets([
+        payload?.sourceReturnTarget ?? (isSeedMode ? demoOriginTargets.sourceReturnTarget : null),
+        payload?.sourcePrimarySubManagerTarget ??
+          (isSeedMode ? demoOriginTargets.sourcePrimarySubManagerTarget : null),
+      ]),
+    [demoOriginTargets, isSeedMode, payload],
+  );
+  const initialCaseOrigin = useMemo(
+    () => buildCaseOrigin(payload, isSeedMode),
+    [isSeedMode, payload],
   );
   const originWorkspaceLabel = payload
     ? getOriginWorkspaceLabel(payload)
@@ -1057,55 +1204,41 @@ export function PageG() {
     : isSeedMode
       ? 'Demo seed'
       : 'Manual brief';
+  const seedBrief = payload?.content ?? (isSeedMode ? demoSeed.brief : '');
   const hasStaleResult =
     Boolean(managerResult) && lastVerifiedInput.trim() !== draft.trim();
   const panelWidth = 'calc((100% - 32px) / 3)';
   const workspaceTabs: Array<{ id: WorkspacePanelId; label: string; mobileLabel: string }> = [
-    { id: 'manager', label: 'Manager', mobileLabel: 'Mgr' },
+    { id: 'manager', label: 'Sub-Manager', mobileLabel: 'SM' },
     { id: 'worker_a', label: 'Worker A', mobileLabel: 'A' },
     { id: 'worker_b', label: 'Worker B', mobileLabel: 'B' },
   ];
 
   const managerForwardTargets = useMemo(
-    () =>
-      dedupeRoutingTargets([
-        payload?.sourceReturnTarget ?? (isSeedMode ? demoOriginTargets.sourceReturnTarget : null),
-        payload?.sourceTeamManagerTarget ?? (isSeedMode ? demoOriginTargets.sourceTeamManagerTarget : null),
-        payload?.sourceSupervisorTarget ?? (isSeedMode ? demoOriginTargets.sourceSupervisorTarget : null),
-      ]),
-    [demoOriginTargets, isSeedMode, payload],
+    () => getCrossVerificationForwardTargets(payload, caseReturnTargets),
+    [caseReturnTargets, payload],
   );
 
   const chooseAnswerTargets = useMemo(
     () =>
       dedupeRoutingTargets([
-        {
-          id: 'cross_verification:sub-manager',
-          kind: 'cross-verification-sub-manager',
-          label: 'Cross Verification Sub-Manager',
-          page: 'G',
-          sourceArea: 'cross-verification',
-          teamId: CROSS_VERIFICATION_TEAM_ID,
-          teamLabel: 'Cross Verification',
-        } satisfies AuditAnswerRoutingTarget,
-        payload?.sourceReturnTarget ?? (isSeedMode ? demoOriginTargets.sourceReturnTarget : null),
-        payload?.sourceTeamManagerTarget ??
-          (isSeedMode ? demoOriginTargets.sourceTeamManagerTarget : payload?.sourceSupervisorTarget),
+        buildCrossVerificationSubManagerRoutingTarget(),
+        ...caseReturnTargets,
       ]),
-    [demoOriginTargets, isSeedMode, payload],
+    [caseReturnTargets],
   );
 
   const managerSeedMessages = useMemo(
     () =>
       buildManagerSeedMessages({
         hasPayload,
-        brief: draft,
+        brief: seedBrief,
         originWorkspaceLabel,
         originSectionLabel,
         originAgentLabel,
         inputModeLabel,
       }),
-    [draft, hasPayload, inputModeLabel, originAgentLabel, originSectionLabel, originWorkspaceLabel],
+    [hasPayload, inputModeLabel, originAgentLabel, originSectionLabel, originWorkspaceLabel, seedBrief],
   );
 
   const selectedManagerMessages = useMemo(
@@ -1117,66 +1250,131 @@ export function PageG() {
     [draft, managerChatDraft, managerMessages],
   );
 
-  useEffect(() => {
-    if (!managerTouched) {
-      setManagerMessages(managerSeedMessages);
-      setSelectedManagerIds([]);
-    }
-  }, [managerSeedMessages, managerTouched]);
+  const contextSignature = useMemo(
+    () =>
+      payload
+        ? JSON.stringify({
+            sourceAgentId: payload.sourceAgentId,
+            sourceTeamId: payload.sourceTeamId,
+            messageIds: payload.messageIds,
+            content: payload.content,
+          })
+        : isSeedMode
+          ? 'demo-seed'
+          : isDetachedLaunch
+            ? 'detached-manual'
+            : 'manual',
+    [isDetachedLaunch, isSeedMode, payload],
+  );
 
   useEffect(() => {
-    if (!hasPayload) {
+    if (launchId && !launchHydrated) {
       return;
     }
 
-    setVerificationStage('ready');
-    setVerificationRequest('');
-    setWorkerResults({ manager: null, worker_a: null, worker_b: null });
-    setManagerResult(null);
+    const persistedState = getCrossVerificationSessionState<CrossVerificationPersistedState | null>(null);
+    const persistedThread = getWorkspaceThreadState(CROSS_VERIFICATION_TEAM_ID, TEAM_MANAGER_THREAD_ID);
+    const persistedMatchesContext = persistedState?.contextSignature === contextSignature;
+
+    if (persistedMatchesContext) {
+      const hydratedMessages =
+        persistedThread.messages.length > 0
+          ? toManagerMessages(persistedThread.messages)
+          : isSeedMode
+            ? demoSeed.managerMessages
+            : managerSeedMessages;
+      const nextDraft =
+        persistedState?.lastVerifiedInput ||
+        getLatestUserBrief(hydratedMessages) ||
+        seedBrief;
+
+      setActivePanel(persistedState?.activePanel ?? 'manager');
+      setVerificationStage(persistedState?.verificationStage ?? 'ready');
+      setVerificationRequest(persistedState?.verificationRequest ?? '');
+      setCaseReturnTargets(persistedState?.caseReturnTargets ?? initialCaseReturnTargets);
+      setWorkerResults(persistedState?.workerResults ?? buildEmptyWorkerResults());
+      setManagerResult(persistedState?.managerResult ?? null);
+      setChosenWorkerAnswer(persistedState?.chosenWorkerAnswer ?? null);
+      setLastVerifiedInput(persistedState?.lastVerifiedInput ?? '');
+      setLastVerifiedAt(persistedState?.lastVerifiedAt ?? '');
+      setManagerMessages(hydratedMessages);
+      setSelectedManagerIds(persistedThread.selectedIds);
+      setManagerChatDraft(persistedThread.draft);
+      setShowSaveSelection(false);
+      setShowSaveModal(false);
+      setChooseDestinationState(null);
+
+      if (nextDraft !== draft) {
+        dispatch({ type: 'SET_CROSS_VERIFICATION_DRAFT', value: nextDraft });
+      }
+
+      setHydratedContextSignature(contextSignature);
+      return;
+    }
+
+    const initialMessages = isSeedMode ? demoSeed.managerMessages : managerSeedMessages;
+    const initialWorkerResults = isSeedMode
+      ? {
+          manager: null,
+          worker_a: demoSeed.workerResults.find((result) => result.id === 'worker_a') ?? null,
+          worker_b: demoSeed.workerResults.find((result) => result.id === 'worker_b') ?? null,
+        }
+      : buildEmptyWorkerResults();
+    const initialManagerResult = isSeedMode ? demoSeed.managerResult : null;
+    const initialVerificationStage = isSeedMode ? 'verified' : 'ready';
+    const initialVerificationRequest = isSeedMode ? demoSeed.brief : '';
+    const initialLastVerifiedInput = isSeedMode ? demoSeed.brief : '';
+    const initialLastVerifiedAt = isSeedMode ? demoSeed.verifiedAt : '';
+    const initialDraft = isSeedMode ? demoSeed.brief : seedBrief;
+
+    setActivePanel('manager');
+    setVerificationStage(initialVerificationStage);
+    setVerificationRequest(initialVerificationRequest);
+    setCaseReturnTargets(initialCaseReturnTargets);
+    setWorkerResults(initialWorkerResults);
+    setManagerResult(initialManagerResult);
     setChosenWorkerAnswer(null);
-    setLastVerifiedInput('');
-    setLastVerifiedAt('');
-    setManagerMessages([]);
+    setLastVerifiedInput(initialLastVerifiedInput);
+    setLastVerifiedAt(initialLastVerifiedAt);
+    setManagerMessages(initialMessages);
     setSelectedManagerIds([]);
     setManagerChatDraft('');
-    setManagerTouched(false);
     setShowSaveSelection(false);
     setShowSaveModal(false);
     setChooseDestinationState(null);
-    setActivePanel('manager');
-  }, [
-    hasPayload,
-    payload?.content,
-    payload?.messageIds,
-    payload?.sourceAgentId,
-    payload?.sourceTeamId,
-  ]);
-
-  useEffect(() => {
-    if (!isSeedMode || managerTouched) {
-      return;
-    }
-
-    if (draft.trim() !== demoSeed.brief) {
-      dispatch({ type: 'SET_CROSS_VERIFICATION_DRAFT', value: demoSeed.brief });
-    }
-
-    setVerificationStage('verified');
-    setVerificationRequest(demoSeed.brief);
-    setWorkerResults({
-      manager: null,
-      worker_a: demoSeed.workerResults.find((result) => result.id === 'worker_a') ?? null,
-      worker_b: demoSeed.workerResults.find((result) => result.id === 'worker_b') ?? null,
+    setWorkspaceThreadState(CROSS_VERIFICATION_TEAM_ID, TEAM_MANAGER_THREAD_ID, {
+      ...persistedThread,
+      messages: toWorkspaceMessages(initialMessages),
+      selectedIds: [],
+      draft: '',
     });
-    setManagerResult(demoSeed.managerResult);
-    setLastVerifiedInput(demoSeed.brief);
-    setLastVerifiedAt(demoSeed.verifiedAt);
-    setManagerMessages(demoSeed.managerMessages);
-    setSelectedManagerIds([]);
-    setManagerChatDraft('');
-    setChosenWorkerAnswer(null);
-    setChooseDestinationState(null);
-  }, [demoSeed, dispatch, draft, isSeedMode, managerTouched]);
+    saveCrossVerificationSessionState<CrossVerificationPersistedState>({
+      contextSignature,
+      activePanel: 'manager',
+      verificationStage: initialVerificationStage,
+      verificationRequest: initialVerificationRequest,
+      caseOrigin: initialCaseOrigin,
+      caseReturnTargets: initialCaseReturnTargets,
+      workerResults: initialWorkerResults,
+      managerResult: initialManagerResult,
+      chosenWorkerAnswer: null,
+      lastVerifiedInput: initialLastVerifiedInput,
+      lastVerifiedAt: initialLastVerifiedAt,
+    });
+    dispatch({ type: 'SET_CROSS_VERIFICATION_DRAFT', value: initialDraft });
+    setHydratedContextSignature(contextSignature);
+  }, [
+    contextSignature,
+    demoSeed,
+    dispatch,
+    isSeedMode,
+    launchHydrated,
+    launchId,
+    initialCaseOrigin,
+    initialCaseReturnTargets,
+    managerSeedMessages,
+    seedBrief,
+  ]);
 
   useEffect(() => {
     if (showSaveModal) {
@@ -1197,6 +1395,49 @@ export function PageG() {
       setForwardTarget(managerForwardTargets[0]?.id ?? '');
     }
   }, [forwardTarget, managerForwardTargets]);
+
+  useEffect(() => {
+    if (hydratedContextSignature !== contextSignature) {
+      return;
+    }
+
+    const currentThread = getWorkspaceThreadState(CROSS_VERIFICATION_TEAM_ID, TEAM_MANAGER_THREAD_ID);
+    setWorkspaceThreadState(CROSS_VERIFICATION_TEAM_ID, TEAM_MANAGER_THREAD_ID, {
+      ...currentThread,
+      messages: toWorkspaceMessages(managerMessages),
+      selectedIds: selectedManagerIds,
+      draft: managerChatDraft,
+    });
+    saveCrossVerificationSessionState<CrossVerificationPersistedState>({
+      contextSignature,
+      activePanel,
+      verificationStage,
+      verificationRequest,
+      caseOrigin: initialCaseOrigin,
+      caseReturnTargets,
+      workerResults,
+      managerResult,
+      chosenWorkerAnswer,
+      lastVerifiedInput,
+      lastVerifiedAt,
+    });
+  }, [
+    activePanel,
+    caseReturnTargets,
+    chosenWorkerAnswer,
+    contextSignature,
+    initialCaseOrigin,
+    lastVerifiedAt,
+    lastVerifiedInput,
+    managerChatDraft,
+    managerMessages,
+    managerResult,
+    selectedManagerIds,
+    hydratedContextSignature,
+    verificationRequest,
+    verificationStage,
+    workerResults,
+  ]);
 
   useEffect(() => {
     if (verificationStage !== 'verifying' || !verificationRequest.trim()) {
@@ -1222,7 +1463,6 @@ export function PageG() {
           `Verification synthesis ready.\n\n${nextResults.managerResult.finalSynthesis}\n\nHuman review note: ${nextResults.managerResult.nextStep}`,
         ),
       ]);
-      setManagerTouched(true);
       setVerificationStage('verified');
       setActivePanel('manager');
     }, 780);
@@ -1245,7 +1485,6 @@ export function PageG() {
     }
 
     dispatch({ type: 'SET_CROSS_VERIFICATION_DRAFT', value: normalizedDraft });
-    setManagerTouched(true);
     setChosenWorkerAnswer(null);
     setChooseDestinationState(null);
     setShowSaveSelection(false);
@@ -1259,22 +1498,20 @@ export function PageG() {
         ? { type: 'CLEAR_CROSS_VERIFICATION_CONTEXT' }
         : { type: 'SET_CROSS_VERIFICATION_DRAFT', value: '' },
     );
-    setVerificationStage('ready');
-    setVerificationRequest('');
-    setWorkerResults({ manager: null, worker_a: null, worker_b: null });
-    setManagerResult(null);
-    setChosenWorkerAnswer(null);
-    setLastVerifiedInput('');
-    setLastVerifiedAt('');
-    setManagerMessages([]);
-    setSelectedManagerIds([]);
-    setManagerChatDraft('');
-    setManagerTouched(false);
     setShowRefreshConfirm(false);
     setShowSaveSelection(false);
     setShowSaveModal(false);
     setChooseDestinationState(null);
     setActivePanel('manager');
+
+    if (!hasPayload) {
+      clearCrossVerificationSessionState();
+      setWorkspaceThreadState(CROSS_VERIFICATION_TEAM_ID, TEAM_MANAGER_THREAD_ID, {
+        messages: [],
+        selectedIds: [],
+        draft: '',
+      });
+    }
   };
 
   const returnToSource = () => {
@@ -1322,7 +1559,6 @@ export function PageG() {
     }
 
     dispatch({ type: 'SET_CROSS_VERIFICATION_DRAFT', value: normalizedDraft });
-    setManagerTouched(true);
     setManagerMessages((current) => [
       ...current,
       createCrossVerificationMessage('user', 'User', normalizedDraft),
@@ -1344,15 +1580,26 @@ export function PageG() {
   const routeMessageToTarget = (
     target: AuditAnswerRoutingTarget,
     message: Message,
+    mode: 'review-forward' | 'choose-answer' = 'choose-answer',
   ) => {
-    if (target.kind === 'cross-verification-sub-manager') {
-      setManagerTouched(true);
+    if (
+      mode === 'review-forward' &&
+      !isValidAuditRoutingTargetForReviewForward('cross-verification-sub-manager', target)
+    ) {
+      return false;
+    }
+
+    if (target.kind === 'sub-manager' && target.sourceArea === 'cross-verification') {
       setManagerMessages((current) => [...current, message]);
       setActivePanel('manager');
-      return;
+      return true;
     }
 
-    if (target.sourceArea === 'main-workspace' && target.agentRole) {
+    if (
+      target.kind === 'general-manager' &&
+      target.sourceArea === 'main-workspace' &&
+      target.agentRole
+    ) {
       dispatch({
         type: 'ADD_MESSAGE',
         agent: target.agentRole,
@@ -1361,34 +1608,10 @@ export function PageG() {
           agent: target.agentRole,
         },
       });
-      return;
+      return true;
     }
 
-    if (target.sourceArea === 'team-workspace' && target.teamId && target.workerId) {
-      appendMessageToTeamWorker(target.teamId, target.workerId, {
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp,
-        senderLabel: message.senderLabel,
-        variant: message.variant,
-      });
-      return;
-    }
-
-    if (target.kind === 'origin-team-sub-manager' && target.teamId) {
-      appendMessageToTeamManagerThread(target.teamId, {
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp,
-        senderLabel: message.senderLabel,
-        variant: message.variant,
-      });
-      return;
-    }
-
-    if (target.agentRole) {
+    if (target.kind === 'worker' && target.sourceArea === 'main-workspace' && target.agentRole) {
       dispatch({
         type: 'ADD_MESSAGE',
         agent: target.agentRole,
@@ -1397,7 +1620,22 @@ export function PageG() {
           agent: target.agentRole,
         },
       });
+      return true;
     }
+
+    if (target.kind === 'worker' && target.sourceArea === 'team-workspace' && target.teamId && target.workerId) {
+      appendMessageToTeamWorker(target.teamId, target.workerId, toRoutedWorkspaceMessage(message));
+      setSecondaryWorkspaceFocusThread(target.teamId, target.workerId);
+      return true;
+    }
+
+    if (target.kind === 'sub-manager' && target.sourceArea === 'team-workspace' && target.teamId) {
+      appendMessageToTeamManagerThread(target.teamId, toRoutedWorkspaceMessage(message));
+      setSecondaryWorkspaceFocusThread(target.teamId, TEAM_MANAGER_THREAD_ID);
+      return true;
+    }
+
+    return false;
   };
 
   const handleForward = () => {
@@ -1413,11 +1651,16 @@ export function PageG() {
       return;
     }
 
-    setManagerTouched(true);
-    routeMessageToTarget(
+    const didRoute = routeMessageToTarget(
       target,
       createCrossVerificationRoutingMessage(buildInboundForwardMessage(selectedManagerMessages)),
+      'review-forward',
     );
+    if (!didRoute) {
+      setToast('That destination is blocked by the current review hierarchy.');
+      return;
+    }
+
     setManagerMessages((current) => [
       ...current,
       createCrossVerificationMessage(
@@ -1471,7 +1714,7 @@ export function PageG() {
   const resetManagerSession = (mode: 'seed' | 'clear') => {
     setVerificationStage('ready');
     setVerificationRequest('');
-    setWorkerResults({ manager: null, worker_a: null, worker_b: null });
+    setWorkerResults(buildEmptyWorkerResults());
     setManagerResult(null);
     setChosenWorkerAnswer(null);
     setLastVerifiedInput('');
@@ -1490,13 +1733,13 @@ export function PageG() {
     });
 
     if (mode === 'seed') {
-      setManagerTouched(false);
       setManagerMessages(managerSeedMessages);
+      setSelectedManagerIds([]);
+      setManagerChatDraft('');
       setToast('Sub-manager session restored.');
       return;
     }
 
-    setManagerTouched(true);
     setManagerMessages([]);
     setToast('Sub-manager conversation cleared.');
   };
@@ -1528,9 +1771,8 @@ export function PageG() {
     };
     const answerContent = buildChosenAnswerContent(chosenAnswer);
 
-    if (target.kind === 'cross-verification-sub-manager') {
+    if (target.kind === 'sub-manager' && target.sourceArea === 'cross-verification') {
       setChosenWorkerAnswer(chosenAnswer);
-      setManagerTouched(true);
       setManagerMessages((current) => [
         ...current,
         createCrossVerificationRoutingMessage(answerContent, 'standard'),
@@ -1541,10 +1783,14 @@ export function PageG() {
       return;
     }
 
-    routeMessageToTarget(
+    const didRoute = routeMessageToTarget(
       target,
       createCrossVerificationRoutingMessage(answerContent, 'standard'),
     );
+    if (!didRoute) {
+      setToast('That destination is currently unavailable.');
+      return;
+    }
     setToast(`${chosenAnswer.workerLabel} answer sent to ${getRoutingTargetOptionLabel(target)}.`);
     setChooseDestinationState(null);
   };

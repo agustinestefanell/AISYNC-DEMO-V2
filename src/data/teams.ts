@@ -594,12 +594,56 @@ export function getWorkspaceAgentForTeam(teamId: string, teamsGraph: TeamsGraphN
   return order[index % order.length];
 }
 
+export function getNodeById(teamsGraph: TeamsGraphNode[], nodeId: string | null | undefined) {
+  if (!nodeId) {
+    return null;
+  }
+
+  return teamsGraph.find((node) => node.id === nodeId) ?? null;
+}
+
+export function getWorkspaceRootNode(
+  node: TeamsGraphNode,
+  teamsGraph: TeamsGraphNode[],
+): TeamsGraphNode {
+  if (node.type === 'senior_manager' || node.type === 'general_manager') {
+    return node;
+  }
+
+  let currentNode: TeamsGraphNode | null = node;
+  while (currentNode?.parentId) {
+    const parentNode = getNodeById(teamsGraph, currentNode.parentId);
+    if (!parentNode) {
+      break;
+    }
+
+    if (parentNode.type === 'senior_manager') {
+      return parentNode;
+    }
+
+    if (parentNode.type === 'general_manager') {
+      return node;
+    }
+
+    currentNode = parentNode;
+  }
+
+  return node;
+}
+
 export function getSecondaryWorkspaceTarget(
   node: TeamsGraphNode,
+  teamsGraph: TeamsGraphNode[],
 ): SecondaryWorkspaceTarget {
+  const rootNode = getWorkspaceRootNode(node, teamsGraph);
+
   return {
     teamId: node.teamId,
-    label: node.label,
+    label: rootNode.label,
     color: getTeamTheme(node.teamId).ribbon,
+    nodeId: node.id,
+    nodeType: node.type,
+    rootNodeId: rootNode.id,
+    focusNodeId: node.id,
   };
 }

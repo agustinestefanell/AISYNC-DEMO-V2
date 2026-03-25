@@ -8,7 +8,7 @@ import {
   setWorkspaceThreadDraft,
   type SecondaryWorkspaceStore,
 } from '../crossVerificationRouting';
-import { getInitialTeamsMapState, getTeamTheme, getWorkersByTeam } from '../data/teams';
+import { getInitialTeamsMapState, getNodeById, getTeamTheme } from '../data/teams';
 import { useApp } from '../context';
 import type {
   AgentRole,
@@ -98,7 +98,6 @@ export function PageH() {
   const [workspaceFilter, setWorkspaceFilter] = useState<'all' | 'main' | 'team'>('all');
   const [lockFilter, setLockFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
   const teamsState = useMemo(getInitialTeamsMapState, []);
-  const workersByTeam = useMemo(() => getWorkersByTeam(teamsState.teamsGraph), [teamsState.teamsGraph]);
 
   const checkpoints = useMemo<CheckpointRecord[]>(() => {
     const mainCheckpoints: CheckpointRecord[] = (['manager', 'worker1', 'worker2'] as AgentRole[])
@@ -115,38 +114,54 @@ export function PageH() {
         })),
       );
 
-    const teamLabelById = new Map<string, string>();
-    teamsState.teamsGraph.forEach((node) => {
-      if (node.parentId === 'gm_1') {
-        teamLabelById.set(node.teamId, node.label);
-      }
-    });
-
     const teamCheckpoints: CheckpointRecord[] = Object.entries(secondaryWorkspaceStore).flatMap(
-      ([teamId, threads]) => {
-        const teamLabel = teamLabelById.get(teamId) ?? 'Team Workspace';
+      ([workspaceRootId, threads]) => {
+        const rootNode = getNodeById(teamsState.teamsGraph, workspaceRootId);
+        if (!rootNode) {
+          return [];
+        }
+
+        const teamId = rootNode.teamId;
+        const teamLabel = rootNode.label;
         const workspaceTarget: SecondaryWorkspaceTarget = {
           teamId,
           label: teamLabel,
           color: getTeamTheme(teamId).ribbon,
+          nodeId: rootNode.id,
+          nodeType: rootNode.type,
+          rootNodeId: rootNode.id,
+          focusNodeId: rootNode.id,
         };
-        const workers = workersByTeam[teamId] ?? [];
+        const workspaceMembers =
+          rootNode.type === 'worker'
+            ? [rootNode]
+            : teamsState.teamsGraph.filter((node) => node.parentId === rootNode.id);
 
         return Object.entries(threads).flatMap(([threadId, threadState]) => {
           const threadLabel =
             threadId === TEAM_MANAGER_THREAD_ID
               ? `${teamLabel} Sub-Manager`
-              : workers.find((worker) => worker.id === threadId)?.label ?? threadId;
+              : workspaceMembers.find((worker) => worker.id === threadId)?.label ?? threadId;
+          const threadTarget =
+            threadId === TEAM_MANAGER_THREAD_ID
+              ? workspaceTarget
+              : {
+                  ...workspaceTarget,
+                  nodeId: threadId,
+                  nodeType:
+                    workspaceMembers.find((worker) => worker.id === threadId)?.type ?? rootNode.type,
+                  focusNodeId: threadId,
+                };
 
           return threadState.versions.map((version) => ({
-            id: `team:${teamId}:${threadId}:${version.id}`,
+            id: `team:${workspaceRootId}:${threadId}:${version.id}`,
             source: 'team' as const,
             accentColor: workspaceTarget.color,
             workspaceLabel: teamLabel,
             threadLabel,
             threadId,
-            teamId,
-            workspaceTarget,
+            teamId: workspaceRootId,
+            workspaceTarget: threadTarget,
             version,
           }));
         });
@@ -157,7 +172,7 @@ export function PageH() {
       (left, right) =>
         new Date(right.version.savedAt).getTime() - new Date(left.version.savedAt).getTime(),
     );
-  }, [secondaryWorkspaceStore, state.workspaceVersions, teamsState.teamsGraph, workersByTeam]);
+  }, [secondaryWorkspaceStore, state.workspaceVersions, teamsState.teamsGraph]);
 
   const filteredCheckpoints = useMemo(
     () =>

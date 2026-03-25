@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { buildTeamSubManagerAuditAnswerPayload } from '../auditRouting';
 import { useApp } from '../context';
 import { openCrossVerificationWindow } from '../crossVerificationLaunch';
-import type { AgentRole, FileType, WorkspaceVersion } from '../types';
+import { getProviderDisplayName } from '../data/teams';
+import { isValidTeamSubManagerForwardTarget } from '../reviewForwardPolicy';
+import type { AIProvider, FileType, ReviewForwardTargetOption, WorkspaceVersion } from '../types';
 import { formatWorkspaceVersionTimestamp } from '../versioning';
 import { Modal } from './Modal';
 import { LockIconButton } from './LockIconButton';
@@ -32,20 +35,12 @@ function buildSaveContent(messages: TeamMessage[]) {
   return messages.map((message) => `${message.senderLabel}: ${message.content}`).join('\n\n');
 }
 
-function buildAuditContent(messages: TeamMessage[]) {
-  return messages.map((message) => `${message.senderLabel}: ${message.content.trim()}`).join('\n\n');
-}
-
-export interface TeamSubManagerForwardOption {
-  id: string;
-  label: string;
-  workerId?: string;
-  agentRole?: AgentRole;
-}
+export interface TeamSubManagerForwardOption extends ReviewForwardTargetOption {}
 
 export function TeamSubManagerPanel({
   teamId,
   teamLabel,
+  provider,
   theme,
   messages,
   selectedIds,
@@ -68,6 +63,7 @@ export function TeamSubManagerPanel({
 }: {
   teamId: string;
   teamLabel: string;
+  provider: AIProvider;
   theme: {
     ribbon: string;
     soft: string;
@@ -108,6 +104,10 @@ export function TeamSubManagerPanel({
   const selectedMessages = useMemo(
     () => messages.filter((message) => selectedIds.includes(message.id)),
     [messages, selectedIds],
+  );
+  const validWorkerIds = useMemo(
+    () => forwardOptions.flatMap((option) => (option.workerId ? [option.workerId] : [])),
+    [forwardOptions],
   );
   const latestVersion = workspaceVersions[workspaceVersions.length - 1] ?? null;
   const versionSummary = latestVersion
@@ -171,7 +171,7 @@ export function TeamSubManagerPanel({
         role: 'agent',
         content: `${teamLabel} Sub-Manager logged the update and is coordinating the next reviewed team action.`,
         timestamp: getNowTime(),
-        senderLabel: 'Gemini',
+        senderLabel: getProviderDisplayName(provider),
       });
     }, 620);
   };
@@ -188,7 +188,7 @@ export function TeamSubManagerPanel({
     }
 
     const target = forwardOptions.find((option) => option.id === forwardTarget);
-    if (!target) {
+    if (!target || !isValidTeamSubManagerForwardTarget(target, validWorkerIds)) {
       setToast('Choose a valid destination first.');
       return;
     }
@@ -249,50 +249,13 @@ export function TeamSubManagerPanel({
       return;
     }
 
-    const payload = {
-      sourcePage: 'F' as const,
-      sourceWorkspace: state.secondaryWorkspace,
-      sourceArea: 'team-workspace' as const,
-      sourceAgentId: `${teamId}:sub-manager`,
-      sourceAgentLabel: `${teamLabel} Sub-Manager`,
-      sourceAgentType: 'sub-manager' as const,
-      sourceTeamId: teamId,
-      sourceTeamLabel: teamLabel,
-      sourceReturnTarget: {
-        id: `${teamId}:sub-manager`,
-        kind: 'origin-team-sub-manager' as const,
-        label: `${teamLabel} Sub-Manager`,
-        page: 'F' as const,
-        sourceArea: 'team-workspace' as const,
-        teamId,
-        teamLabel,
-        workspace: state.secondaryWorkspace,
-      },
-      sourceTeamManagerTarget: {
-        id: `${teamId}:sub-manager`,
-        kind: 'origin-team-sub-manager' as const,
-        label: `${teamLabel} Sub-Manager`,
-        page: 'F' as const,
-        sourceArea: 'team-workspace' as const,
-        teamId,
-        teamLabel,
-        workspace: state.secondaryWorkspace,
-      },
-      sourceSupervisorTarget: {
-        id: 'main_workspace:manager',
-        kind: 'origin-supervisor' as const,
-        label: 'AI General Manager',
-        page: 'A' as const,
-        sourceArea: 'main-workspace' as const,
-        teamId: 'main_workspace',
-        teamLabel: 'Main Workspace',
-        agentRole: 'manager' as const,
-      },
-      contentType: 'message-selection' as const,
-      selectedCount: selectedMessages.length,
-      messageIds: selectedMessages.map((message) => message.id),
-      content: buildAuditContent(selectedMessages),
-    };
+    const payload = buildTeamSubManagerAuditAnswerPayload({
+      page: 'F',
+      workspace: state.secondaryWorkspace,
+      teamId,
+      teamLabel,
+      selectedMessages,
+    });
 
     if (openCrossVerificationWindow(payload)) {
       setToast('Cross Verification opened in a new window.');
@@ -336,7 +299,7 @@ export function TeamSubManagerPanel({
               </span>
             </div>
             <div className="truncate text-[11px] font-semibold text-neutral-900">
-              Sub-Manager | Gemini
+              Sub-Manager | {getProviderDisplayName(provider)}
             </div>
             <div className="ui-chat-panel-meta">{versionSummary}</div>
           </div>

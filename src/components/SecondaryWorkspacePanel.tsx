@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { buildTeamWorkerAuditAnswerPayload } from '../auditRouting';
 import { useApp } from '../context';
 import { openCrossVerificationWindow } from '../crossVerificationLaunch';
 import { getProviderDisplayName } from '../data/teams';
@@ -40,10 +41,6 @@ function buildForwardedContent(messages: TeamMessage[], sourceLabel: string) {
 
 function buildSaveContent(messages: TeamMessage[]) {
   return messages.map((message) => `${message.senderLabel}: ${message.content}`).join('\n\n');
-}
-
-function buildAuditContent(messages: TeamMessage[]) {
-  return messages.map((message) => `${message.senderLabel}: ${message.content.trim()}`).join('\n\n');
 }
 
 export function SecondaryWorkspacePanel({
@@ -259,51 +256,15 @@ export function SecondaryWorkspacePanel({
       return;
     }
 
-    const payload = {
-      sourcePage: 'F' as const,
-      sourceWorkspace: state.secondaryWorkspace,
-      sourceArea: 'team-workspace' as const,
-      sourceAgentId: workerId,
-      sourceAgentLabel: workerLabel,
-      sourceAgentType: 'worker' as const,
-      sourceTeamId: teamId,
-      sourceTeamLabel: teamLabel,
-      sourceReturnTarget: {
-        id: `${teamId}:${workerId}`,
-        kind: 'origin-agent' as const,
-        label: workerLabel,
-        page: 'F' as const,
-        sourceArea: 'team-workspace' as const,
-        teamId,
-        teamLabel,
-        workspace: state.secondaryWorkspace,
-        workerId,
-      },
-      sourceTeamManagerTarget: {
-        id: `${teamId}:sub-manager`,
-        kind: 'origin-team-sub-manager' as const,
-        label: `${teamLabel} Sub-Manager`,
-        page: 'F' as const,
-        sourceArea: 'team-workspace' as const,
-        teamId,
-        teamLabel,
-        workspace: state.secondaryWorkspace,
-      },
-      sourceSupervisorTarget: {
-        id: 'main_workspace:manager',
-        kind: 'origin-supervisor' as const,
-        label: 'AI General Manager',
-        page: 'A' as const,
-        sourceArea: 'main-workspace' as const,
-        teamId: 'main_workspace',
-        teamLabel: 'Main Workspace',
-        agentRole: 'manager' as const,
-      },
-      contentType: 'message-selection' as const,
-      selectedCount: selectedMessages.length,
-      messageIds: selectedMessages.map((message) => message.id),
-      content: buildAuditContent(selectedMessages),
-    };
+    const payload = buildTeamWorkerAuditAnswerPayload({
+      page: 'F',
+      workspace: state.secondaryWorkspace,
+      teamId,
+      teamLabel,
+      workerId,
+      workerLabel,
+      selectedMessages,
+    });
 
     if (openCrossVerificationWindow(payload)) {
       setToast('Cross Verification opened in a new window.');

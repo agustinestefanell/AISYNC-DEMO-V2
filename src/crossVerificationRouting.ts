@@ -3,6 +3,7 @@ import type { WorkspaceVersion } from './types';
 const SECONDARY_WORKSPACE_STORAGE_KEY = 'aisync_secondary_workspaces_v1';
 const TEAM_MANAGER_THREAD_ID = '__team_manager__';
 const SECONDARY_WORKSPACE_FOCUS_THREAD_KEY = 'aisync_secondary_workspace_focus_thread_v1';
+const CROSS_VERIFICATION_SESSION_KEY = 'aisync_cross_verification_session_v1';
 
 export interface RoutedWorkspaceMessage {
   id: string;
@@ -80,24 +81,43 @@ function getThreadState(
   return normalizeThreadState(store[teamId]?.[threadId]);
 }
 
-export function appendMessageToTeamWorker(
+export function getWorkspaceThreadState(teamId: string, threadId: string) {
+  return getThreadState(getSecondaryWorkspaceStore(), teamId, threadId);
+}
+
+export function setWorkspaceThreadState(
   teamId: string,
-  workerId: string,
-  message: RoutedWorkspaceMessage,
+  threadId: string,
+  nextThreadState: Partial<WorkspaceThreadState>,
 ) {
   const store = getSecondaryWorkspaceStore();
   const currentTeamStore = store[teamId] ?? {};
-  const currentWorkerStore = getThreadState(store, teamId, workerId);
+  const currentThreadStore = getThreadState(store, teamId, threadId);
 
   saveSecondaryWorkspaceStore({
     ...store,
     [teamId]: {
       ...currentTeamStore,
-      [workerId]: {
-        ...currentWorkerStore,
-        messages: [...currentWorkerStore.messages, message],
+      [threadId]: {
+        ...currentThreadStore,
+        ...normalizeThreadState({
+          ...currentThreadStore,
+          ...nextThreadState,
+        }),
       },
     },
+  });
+}
+
+export function appendMessageToTeamWorker(
+  teamId: string,
+  workerId: string,
+  message: RoutedWorkspaceMessage,
+) {
+  const currentWorkerStore = getWorkspaceThreadState(teamId, workerId);
+  setWorkspaceThreadState(teamId, workerId, {
+    ...currentWorkerStore,
+    messages: [...currentWorkerStore.messages, message],
   });
 }
 
@@ -105,19 +125,10 @@ export function appendMessageToTeamManagerThread(
   teamId: string,
   message: RoutedWorkspaceMessage,
 ) {
-  const store = getSecondaryWorkspaceStore();
-  const currentTeamStore = store[teamId] ?? {};
-  const managerThread = getThreadState(store, teamId, TEAM_MANAGER_THREAD_ID);
-
-  saveSecondaryWorkspaceStore({
-    ...store,
-    [teamId]: {
-      ...currentTeamStore,
-      [TEAM_MANAGER_THREAD_ID]: {
-        ...managerThread,
-        messages: [...managerThread.messages, message],
-      },
-    },
+  const managerThread = getWorkspaceThreadState(teamId, TEAM_MANAGER_THREAD_ID);
+  setWorkspaceThreadState(teamId, TEAM_MANAGER_THREAD_ID, {
+    ...managerThread,
+    messages: [...managerThread.messages, message],
   });
 }
 
@@ -130,20 +141,44 @@ export function setWorkspaceThreadDraft(
   threadId: string,
   draft: string,
 ) {
-  const store = getSecondaryWorkspaceStore();
-  const currentTeamStore = store[teamId] ?? {};
-  const currentThreadStore = getThreadState(store, teamId, threadId);
-
-  saveSecondaryWorkspaceStore({
-    ...store,
-    [teamId]: {
-      ...currentTeamStore,
-      [threadId]: {
-        ...currentThreadStore,
-        draft,
-      },
-    },
+  const currentThreadStore = getWorkspaceThreadState(teamId, threadId);
+  setWorkspaceThreadState(teamId, threadId, {
+    ...currentThreadStore,
+    draft,
   });
+}
+
+export function getCrossVerificationSessionState<T>(fallback: T): T {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(CROSS_VERIFICATION_SESSION_KEY);
+    if (!rawValue) {
+      return fallback;
+    }
+
+    return (JSON.parse(rawValue) as T) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveCrossVerificationSessionState<T>(state: T) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(CROSS_VERIFICATION_SESSION_KEY, JSON.stringify(state));
+}
+
+export function clearCrossVerificationSessionState() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(CROSS_VERIFICATION_SESSION_KEY);
 }
 
 export function setSecondaryWorkspaceFocusThread(teamId: string, threadId: string) {
@@ -181,6 +216,7 @@ export function consumeSecondaryWorkspaceFocusThread(teamId: string) {
 }
 
 export {
+  CROSS_VERIFICATION_SESSION_KEY,
   SECONDARY_WORKSPACE_FOCUS_THREAD_KEY,
   SECONDARY_WORKSPACE_STORAGE_KEY,
   TEAM_MANAGER_THREAD_ID,

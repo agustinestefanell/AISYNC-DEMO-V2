@@ -1,0 +1,7 @@
+{
+  "currentPage": "\n            Vaya… no se puede obtener acceso a esta página\n          ",
+  "mapTreeButtons": [
+    "Actualizar"
+  ],
+  "bodyText": "Vaya… no se puede obtener acceso a esta página\n\n127.0.0.1 rechazó la conexión.\n\nPrueba a:\n\nBuscar 127 0 0 1 en internet\nComprobando la conexión\nComprobando el proxy y el firewall\nERR_CONNECTION_REFUSED\nActualizar\nMicrosoft Edge"
+}

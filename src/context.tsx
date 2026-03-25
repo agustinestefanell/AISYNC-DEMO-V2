@@ -19,6 +19,7 @@ import { seedCalendarEvents, seedFiles, seedMessages, seedProjects } from './dat
 import { DEFAULT_WORK_PHASE_STATE } from './phaseState';
 
 const STORAGE_KEY = 'aisync_demo_state_v3';
+export const GENERAL_MANAGER_LABEL = 'AI General Manager';
 
 type Action =
   | { type: 'SET_PAGE'; page: Page }
@@ -110,7 +111,7 @@ function buildSeedState(): AppState {
 }
 
 function getAgentLabel(agent: AgentRole) {
-  if (agent === 'manager') return 'AI General Manager';
+  if (agent === 'manager') return GENERAL_MANAGER_LABEL;
   if (agent === 'worker1') return 'Worker 1';
   return 'Worker 2';
 }
@@ -129,7 +130,7 @@ function getSourceSegments(sourceLabel?: string) {
 }
 
 function getTeamIdFromLabel(teamLabel?: string) {
-  if (!teamLabel || teamLabel === 'Main Workspace' || teamLabel === 'AI General Manager') {
+  if (!teamLabel || teamLabel === 'Main Workspace' || teamLabel === GENERAL_MANAGER_LABEL) {
     return 'global';
   }
   if (teamLabel === 'SM-Legal') return 'team_legal';
@@ -146,13 +147,13 @@ function normalizeCalendarEvent(event: CalendarEvent, userName: string): Calenda
   const actorLabel =
     event.actorLabel ??
     event.sourceLabel ??
-    (event.agent === 'manager' ? 'AI General Manager' : getAgentLabel(event.agent));
+    (event.agent === 'manager' ? GENERAL_MANAGER_LABEL : getAgentLabel(event.agent));
   const workerLabel =
     event.workerLabel ??
     (event.agent === 'manager' ? undefined : sourceSegments[sourceSegments.length - 1] ?? getAgentLabel(event.agent));
   const managerLabel =
     event.managerLabel ??
-    (teamLabel === 'Main Workspace' ? 'AI General Manager' : sourceTeamLabel ?? 'AI General Manager');
+    (teamLabel === 'Main Workspace' ? GENERAL_MANAGER_LABEL : sourceTeamLabel ?? GENERAL_MANAGER_LABEL);
   const outputLabel = event.outputLabel ?? event.title.split('|').pop()?.trim() ?? event.title;
 
   return {
@@ -559,7 +560,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         agent === 'manager'
           ? actorLabel
           : sourceTeamLabel === 'Main Workspace'
-            ? 'AI General Manager'
+            ? GENERAL_MANAGER_LABEL
             : sourceTeamLabel,
       workerLabel:
         agent === 'manager'

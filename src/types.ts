@@ -1,4 +1,5 @@
 export type Page = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+export type SecondaryManagerPage = 'B' | 'C' | 'D' | 'E' | 'G';
 export type AgentRole = 'manager' | 'worker1' | 'worker2';
 export type MessageRole = 'user' | 'agent' | 'system';
 export type FileType = 'Conversation' | 'Document' | 'Report';
@@ -7,18 +8,32 @@ export type TeamsNodeType = 'general_manager' | 'senior_manager' | 'worker';
 export type PromptVisibility = 'public' | 'private';
 export type WorkPhaseState = 'Open' | 'In Review' | 'Closed';
 export type AuditAnswerContentType = 'message-selection';
-export type AuditAnswerSourceAgentType = 'manager' | 'sub-manager' | 'worker';
+export type AuditAnswerSourceAgentType = 'general-manager' | 'sub-manager' | 'worker';
 export type WorkspaceVersionSource = 'main' | 'team';
-export type AuditAnswerRoutingTargetKind =
-  | 'origin-agent'
-  | 'origin-team-sub-manager'
-  | 'origin-supervisor'
+export type ReviewForwardSourceKind =
+  | 'general-manager'
+  | 'main-worker'
+  | 'secondary-page-sub-manager'
+  | 'team-sub-manager'
   | 'cross-verification-sub-manager';
+export type ReviewForwardTargetKind =
+  | 'general-manager'
+  | 'main-worker'
+  | 'team-worker'
+  | 'team-sub-manager';
+export type AuditAnswerRoutingTargetKind =
+  | 'worker'
+  | 'sub-manager'
+  | 'general-manager';
 
 export interface SecondaryWorkspaceTarget {
   teamId: string;
   label: string;
   color: string;
+  nodeId: string;
+  nodeType: TeamsNodeType;
+  rootNodeId: string;
+  focusNodeId: string;
 }
 
 export interface Message {
@@ -147,6 +162,15 @@ export interface AuditAnswerRoutingTarget {
   workerId?: string;
 }
 
+export interface ReviewForwardTargetOption {
+  id: string;
+  label: string;
+  kind: ReviewForwardTargetKind;
+  agentRole?: AgentRole;
+  teamId?: string;
+  workerId?: string;
+}
+
 export interface AuditAnswerPayload {
   sourcePage: Page;
   sourceWorkspace: SecondaryWorkspaceTarget | null;
@@ -157,8 +181,8 @@ export interface AuditAnswerPayload {
   sourceTeamId: string;
   sourceTeamLabel: string;
   sourceReturnTarget: AuditAnswerRoutingTarget;
-  sourceTeamManagerTarget?: AuditAnswerRoutingTarget | null;
-  sourceSupervisorTarget?: AuditAnswerRoutingTarget | null;
+  sourcePrimarySubManagerTarget?: AuditAnswerRoutingTarget | null;
+  sourceGeneralManagerTarget?: AuditAnswerRoutingTarget | null;
   contentType: AuditAnswerContentType;
   selectedCount: number;
   messageIds: string[];
