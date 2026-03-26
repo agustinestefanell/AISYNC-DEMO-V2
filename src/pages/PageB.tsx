@@ -1,34 +1,429 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AgentPanel } from '../components/AgentPanel';
 import { DividerRail } from '../components/DividerRail';
-import { DocumentationTree } from '../components/DocumentationTree';
+import { DocumentationMirrorTree, DocumentationTree } from '../components/DocumentationTree';
 import { FileViewer } from '../components/FileViewer';
 import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
 import { useApp } from '../context';
+import { buildDocumentationModeModel } from '../documentationModel';
+import { getInitialTeamsMapState, TEAMS_STORAGE_KEY, type TeamsMapState } from '../data/teams';
 import { getSecondarySubManagerLabel } from '../pageLabels';
 
-function YearPreview() {
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-
-  return (
-    <div className="ui-surface p-2">
-      <div
-        className="mb-1 text-center text-[10px] font-semibold tracking-[0.16em]"
-        style={{ color: 'var(--color-accent)' }}
-      >
-        2026
-      </div>
-      <div className="grid grid-cols-3 gap-1">
-        {months.map((month) => (
-          <div key={month} className="rounded border border-neutral-200 py-1 text-center text-[9px] text-neutral-500">
-            {month}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const DOCUMENTATION_MODE_MANIFEST = [
+  '# Manifiesto de Documentation Mode — AISync',
+  '## Version 2',
+  '',
+  '## 1. Proposito',
+  '',
+  'Documentation Mode no es un simple explorador de carpetas.',
+  'Es la capa documental estructural de AISync.',
+  '',
+  'Su funcion es transformar la actividad operativa de Teams, Sub-Managers y Workers en una estructura documental local, jerarquica, trazable y navegable, donde el usuario pueda comprender:',
+  '',
+  '- quien produjo cada documento,',
+  '- desde que nivel jerarquico,',
+  '- bajo que rol,',
+  '- en que contexto operativo,',
+  '- en que fase del trabajo,',
+  '- y con que relacion respecto del resto del sistema.',
+  '',
+  'Documentation Mode debe actuar como memoria documental del proceso, no como almacenamiento indiferenciado.',
+  '',
+  '## 2. Principio rector',
+  '',
+  'La estructura documental debe reflejar la estructura real de Teams.',
+  '',
+  'Esto significa que el arbol de carpetas se organiza por:',
+  '',
+  '- jerarquia operativa,',
+  '- proveniencia,',
+  '- rol del agente,',
+  '- continuidad del proceso,',
+  '- y trazabilidad historica.',
+  '',
+  'La logica es coherente con el principio archivistico de proveniencia y con la preservacion del orden original, es decir, conservar el contexto de produccion y las relaciones reales entre documentos.',
+  '',
+  '## 3. Raiz del repositorio',
+  '',
+  'El usuario define manualmente la ubicacion raiz del repositorio documental.',
+  '',
+  'Ejemplo conceptual:',
+  '',
+  '/AISync_Repository/',
+  '',
+  'Esa raiz sera el punto de anclaje local a partir del cual Documentation Mode construira la estructura completa.',
+  '',
+  'AISync propone la estructura.',
+  'El usuario define la ubicacion.',
+  '',
+  '## 4. Regla estructural general',
+  '',
+  'Debajo de la raiz, Documentation Mode debe reproducir fielmente la estructura de Teams.',
+  '',
+  'Cada Team tendra su propia carpeta.',
+  'Dentro de cada Team existiran carpetas separadas por agente.',
+  '',
+  'La estructura debe reflejar:',
+  '',
+  '- General Manager,',
+  '- Sub-Managers,',
+  '- Workers,',
+  '- sub-teams derivados por elasticidad organizacional,',
+  '- y vinculos jerarquicos reales.',
+  '',
+  'No debe existir una organizacion plana que mezcle agentes de ramas distintas.',
+  '',
+  '## 5. Principio de proveniencia documental',
+  '',
+  'Cada agente debe tener su propia unidad documental.',
+  '',
+  'Eso implica:',
+  '',
+  '- una carpeta por Team,',
+  '- una carpeta por Sub-Manager,',
+  '- una carpeta por Worker,',
+  '- y separacion documental por origen real.',
+  '',
+  'La carpeta no representa solo ubicacion fisica.',
+  'Representa quien produjo que y desde donde.',
+  '',
+  '## 6. Principio de no reescritura historica',
+  '',
+  'Documentation Mode no debe reescribir retrospectivamente la historia operativa.',
+  '',
+  '### Regla obligatoria:',
+  'Si un Worker es promovido a Sub-Manager:',
+  '',
+  '- no se renombra la carpeta historica del Worker',
+  '- no se reutiliza esa carpeta como si siempre hubiese sido Sub-Manager',
+  '- no se borra su etapa anterior',
+  '',
+  'En su lugar:',
+  '',
+  '- la carpeta historica del Worker se conserva,',
+  '- y se crea una nueva carpeta para el nuevo rol de Sub-Manager.',
+  '',
+  'Motivo:',
+  'el Worker cumplio funciones bajo un rol especifico; el nuevo Sub-Manager cumple funciones distintas y constituye una unidad operativa distinta.',
+  '',
+  'Renombrar la carpeta anterior destruiria trazabilidad.',
+  '',
+  '## 7. Regla de promocion de agentes',
+  '',
+  'Cuando ocurre elasticidad organizacional y un Worker es promovido:',
+  '',
+  '### Debe pasar esto:',
+  '- la carpeta historica del Worker permanece intacta;',
+  '- se crea una nueva carpeta para el nuevo Sub-Manager;',
+  '- esa nueva carpeta pasa a ser cabeza de una nueva subestructura documental;',
+  '- los nuevos Workers cuelgan de esa nueva unidad.',
+  '',
+  '### No debe pasar esto:',
+  '- no se renombra la carpeta vieja;',
+  '- no se fusionan roles distintos en una sola carpeta;',
+  '- no se simula retrospectivamente que siempre tuvo el rol nuevo;',
+  '- no se pierde continuidad historica.',
+  '',
+  '## 8. Identidad documental',
+  '',
+  'Cada unidad documental debe distinguir entre:',
+  '',
+  '- identidad estable',
+  '- nombre visible',
+  '- rol operativo',
+  '- posicion jerarquica',
+  '- estado temporal',
+  '',
+  'El nombre visible puede cambiar.',
+  'La identidad documental no debe depender exclusivamente de ese nombre.',
+  '',
+  'Por eso, Documentation Mode debe usar una logica dual:',
+  '',
+  '- ID persistente',
+  '- label visible editable',
+  '',
+  '## 9. Regla sobre renombres',
+  '',
+  'El renombre visible de un Team o un agente no debe destruir la trazabilidad historica.',
+  '',
+  'Por eso:',
+  '',
+  '- el sistema debe preservar continuidad aunque cambie el label,',
+  '- y la estructura fisica no debe depender unicamente del nombre visible actual.',
+  '',
+  'La ruta fisica debe ser suficientemente estable como para no romper referencias, historial, indices o auditoria cuando cambian los nombres.',
+  '',
+  '## 10. Estructura minima por agente',
+  '',
+  'Dentro de la carpeta de cada agente, la documentacion debe organizarse por funcion operativa.',
+  '',
+  'La estructura minima recomendada es:',
+  '',
+  '- inbox / input',
+  '- working',
+  '- review & forward',
+  '- output',
+  '- archive',
+  '',
+  'El principio es claro:',
+  '',
+  'la carpeta del agente no es un cajon generico;',
+  'debe reflejar el flujo real de trabajo del agente.',
+  '',
+  '## 11. La estructura fisica no alcanza',
+  '',
+  'Documentation Mode no debe depender solo del arbol de carpetas.',
+  '',
+  'La estructura fisica sirve para:',
+  '',
+  '- proveniencia,',
+  '- jerarquia,',
+  '- legibilidad,',
+  '- y orden operativo.',
+  '',
+  'Pero la recuperacion rapida, el enlace con auditoria y la compatibilidad futura con compliance requieren ademas:',
+  '',
+  '- manifiestos',
+  '- indice transversal',
+  '- metadatos estructurados',
+  '',
+  'La carpeta da contexto.',
+  'El indice y los metadatos dan velocidad, trazabilidad y recuperabilidad operativa.',
+  '',
+  '## 12. Manifiestos',
+  '',
+  'Cada Team y cada agente deben poder tener un manifiesto propio.',
+  '',
+  'Su funcion es registrar, como minimo:',
+  '',
+  '- team_id',
+  '- team_label',
+  '- agent_id',
+  '- agent_label',
+  '- agent_role',
+  '- parent_team_id',
+  '- parent_agent_id',
+  '- created_at',
+  '- updated_at',
+  '- origin_workspace',
+  '- status',
+  '- record_class',
+  '- sensitivity_level',
+  '- retention_rule',
+  '- official_copy',
+  '- path',
+  '- checksum',
+  '- related_audit_events',
+  '',
+  'La carpeta es la estructura visible.',
+  'El manifiesto es la estructura intelectual.',
+  '',
+  '## 13. Indice transversal',
+  '',
+  'Ademas del arbol y de los manifiestos individuales, Documentation Mode debe prever un indice transversal.',
+  '',
+  'Ese indice permitira busquedas rapidas por:',
+  '',
+  '- Team,',
+  '- agente,',
+  '- Sub-Manager,',
+  '- Worker,',
+  '- fecha,',
+  '- evento,',
+  '- tipo documental,',
+  '- estado,',
+  '- Review & Forward,',
+  '- origen,',
+  '- destino,',
+  '- y relacion con Audit Log.',
+  '',
+  'Este indice es la pieza que hace posible que Documentation Mode sea compatible con:',
+  '',
+  '- Audit Log',
+  '- Calendar Mode',
+  '- busquedas rapidas',
+  '- filtros por eventos o responsables',
+  '',
+  'Sin indice, el arbol es legible.',
+  'Con indice, el sistema es operativamente explotable.',
+  '',
+  '## 14. Compatibilidad con Audit Log',
+  '',
+  'Documentation Mode debe ser compatible con Audit Log desde su diseno base.',
+  '',
+  'Eso significa que la documentacion debe poder vincularse con:',
+  '',
+  '- eventos de creacion,',
+  '- eventos de edicion,',
+  '- Review & Forward,',
+  '- versiones,',
+  '- outputs aprobados,',
+  '- responsables,',
+  '- y fechas relevantes.',
+  '',
+  'Audit Log debe poder consultar Documentation Mode no solo por ruta fisica, sino tambien por:',
+  '',
+  '- metadatos,',
+  '- manifests,',
+  '- indice transversal,',
+  '- y vinculo entre evento y documento.',
+  '',
+  '## 15. Compatibilidad con Calendar Mode',
+  '',
+  'Documentation Mode debe prever compatibilidad futura con Calendar Mode.',
+  '',
+  'Eso requiere que los documentos y eventos puedan asociarse temporalmente a:',
+  '',
+  '- fecha de creacion,',
+  '- fecha de revision,',
+  '- fecha de forward,',
+  '- fecha de aprobacion,',
+  '- fecha de archivo,',
+  '- hitos relevantes del proceso.',
+  '',
+  'De esta manera, Calendar Mode podra consultar y mostrar actividad documental por linea de tiempo, sin depender del nombre de archivo o de inspeccion manual del arbol.',
+  '',
+  '## 16. Separacion entre trabajo y archivo',
+  '',
+  'Documentation Mode debe distinguir claramente entre:',
+  '',
+  '- documentacion activa,',
+  '- documentacion en revision,',
+  '- documentacion final,',
+  '- documentacion archivada.',
+  '',
+  'No todo debe convivir en el mismo nivel.',
+  '',
+  'Un sistema serio necesita distinguir entre:',
+  '- lo que se esta produciendo,',
+  '- lo que esta siendo revisado,',
+  '- lo que fue enviado,',
+  '- lo que fue aprobado,',
+  '- y lo que queda como evidencia historica.',
+  '',
+  '## 17. Compatibilidad con data compliance',
+  '',
+  'Documentation Mode debe nacer preparado para compatibilidad futura con compliance documental y regulatorio.',
+  '',
+  'Eso implica prever desde ahora:',
+  '',
+  '- clasificacion documental,',
+  '- regla de retencion,',
+  '- copia oficial / record copy,',
+  '- estados del documento,',
+  '- legal hold,',
+  '- politica de archivo,',
+  '- y trazabilidad de cambios.',
+  '',
+  'Esto no significa que toda esa logica deba implementarse ya.',
+  'Significa que la estructura debe dejar espacio para integrarla sin redisenar todo desde cero.',
+  '',
+  '## 18. Compatibilidad con data safety',
+  '',
+  'Documentation Mode tambien debe nacer preparado para compatibilidad futura con data safety.',
+  '',
+  'Eso exige dejar previstas capas para:',
+  '',
+  '- control de acceso por rol,',
+  '- sensibilidad documental,',
+  '- integridad del archivo,',
+  '- checksum / fixity,',
+  '- cifrado si corresponde,',
+  '- y proteccion frente a alteracion o perdida.',
+  '',
+  '## 19. Regla de no mezcla entre copy oficial y working copy',
+  '',
+  'Documentation Mode debe distinguir entre:',
+  '',
+  '- working copy,',
+  '- reviewed copy,',
+  '- official copy,',
+  '- archived record.',
+  '',
+  'Esto es importante para:',
+  '- trazabilidad,',
+  '- cumplimiento,',
+  '- auditoria,',
+  '- y seguridad juridica del sistema.',
+  '',
+  'Un archivo no debe quedar ambiguamente entre borrador, version aprobada y registro historico.',
+  '',
+  '## 20. Regla de legibilidad humana',
+  '',
+  'Aunque la estructura sea rigurosa, debe seguir siendo comprensible para el usuario.',
+  '',
+  'Eso exige:',
+  '',
+  '- nombres legibles,',
+  '- jerarquias claras,',
+  '- consistencia visual,',
+  '- relacion evidente con Teams Map.',
+  '',
+  'El usuario debe poder mirar Documentation Mode y entender que esta viendo la traduccion documental del sistema operativo de AISync.',
+  '',
+  '## 21. Regla de coherencia con Teams Map',
+  '',
+  'Documentation Mode debe ser el espejo documental de Teams Map.',
+  '',
+  'Si Teams Map muestra:',
+  '',
+  '- un Team,',
+  '- un Sub-Manager,',
+  '- dos Workers,',
+  '- y una rama promovida,',
+  '',
+  'Documentation Mode debe reflejar exactamente esa logica en carpetas y manifiestos.',
+  '',
+  'No deben existir dos realidades paralelas:',
+  '- una operativa,',
+  '- otra documental.',
+  '',
+  '## 22. Regla de estabilidad',
+  '',
+  'La estructura documental no debe cambiar caprichosamente frente a cambios menores de UI.',
+  '',
+  'Debe priorizarse:',
+  '',
+  '- estabilidad,',
+  '- persistencia,',
+  '- continuidad,',
+  '- trazabilidad historica.',
+  '',
+  'Documentation Mode no es un efecto visual; es una capa estructural del sistema.',
+  '',
+  '## 23. Regla de expansion futura',
+  '',
+  'La estructura debe poder crecer para incorporar mas adelante:',
+  '',
+  '- manifests enlazados,',
+  '- versiones,',
+  '- hashes,',
+  '- locks documentales,',
+  '- estados de aprobacion,',
+  '- legal hold,',
+  '- busqueda por metadata,',
+  '- vinculo fuerte con Audit Log,',
+  '- y visualizacion cronologica en Calendar Mode.',
+  '',
+  'La base debe estar preparada desde el diseno, aunque esas funciones se implementen despues.',
+  '',
+  '## 24. Definicion final',
+  '',
+  'Documentation Mode en AISync sera un sistema documental local, jerarquico, trazable y compatible con gobernanza futura, construido a partir de la estructura real de Teams, donde:',
+  '',
+  '- cada Team tendra su unidad documental,',
+  '- cada agente tendra su unidad documental propia,',
+  '- los cambios de rol no reescribiran la historia,',
+  '- el arbol fisico preservara proveniencia,',
+  '- y los manifests + indices permitiran recuperacion rapida, auditoria, compliance y expansion futura hacia data safety.',
+  '',
+  '## 25. Regla operativa resumida',
+  '',
+  'En una linea:',
+  '',
+  'cada carpeta y cada manifiesto deben decir quien produjo que, desde donde, bajo que rol, en que momento, con que estado y con que relacion con el resto del sistema, sin destruir la historia cuando la estructura evoluciona.',
+].join('\n');
 
 function ProjectCard({
   projectId,
@@ -90,14 +485,44 @@ export function PageB() {
   const { state, dispatch } = useApp();
   const subManagerLabel = getSecondarySubManagerLabel('B');
   const [showManagerMobile, setShowManagerMobile] = useState(false);
+  const [showManifestView, setShowManifestView] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [openFileId, setOpenFileId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [teamsMapState, setTeamsMapState] = useState<TeamsMapState>(getInitialTeamsMapState);
+
+  useEffect(() => {
+    const syncTeamsMapState = () => {
+      setTeamsMapState(getInitialTeamsMapState());
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === TEAMS_STORAGE_KEY) {
+        syncTeamsMapState();
+      }
+    };
+
+    syncTeamsMapState();
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   const openFile = state.savedFiles.find((file) => file.id === openFileId) ?? null;
   const openProject =
     state.projects.find((project) => project.id === openFile?.projectId) ?? null;
+  const documentationModel = useMemo(
+    () =>
+      buildDocumentationModeModel({
+        root: state.documentationRoot,
+        teamsGraph: teamsMapState.teamsGraph,
+        savedFiles: state.savedFiles,
+        calendarEvents: state.calendarEvents,
+      }),
+    [state.calendarEvents, state.documentationRoot, state.savedFiles, teamsMapState.teamsGraph],
+  );
 
   const handleCreateProject = () => {
     if (!newProjectName.trim()) {
@@ -123,44 +548,37 @@ export function PageB() {
           <span className="px-24 text-sm font-semibold tracking-[0.14em] text-neutral-900 sm:px-0">
             DOCUMENTATION MODE
           </span>
-          <button
-            className="ui-button ui-button-primary absolute right-2 top-1/2 min-h-9 -translate-y-1/2 px-2.5 text-[11px] text-white sm:right-3 sm:min-h-8"
-            onClick={() => setShowNewProjectModal(true)}
-          >
-            + new project
-          </button>
-        </div>
-      </div>
-
-      <div className="scrollbar-thin flex-1 overflow-y-auto px-2 pb-2 sm:px-3 sm:pb-3" style={{ minHeight: 0 }}>
-        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2 xl:gap-8">
-          {state.projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              projectId={project.id}
-              projectName={project.name}
-              onOpenFile={setOpenFileId}
-              onToast={setToast}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-neutral-200 bg-white px-2 py-2 sm:px-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
-          <div className="grid gap-2">
-            <div className="ui-surface-subtle px-3 py-2 text-[10px] text-neutral-700 sm:w-[250px]">
-              <div className="mb-1 font-semibold">Set backups</div>
-              <div>Manual session backups are indexed into this documentation tree.</div>
-              <div>The path above is one continuous local hierarchy from drive to file.</div>
-            </div>
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-3 sm:right-3">
+            <button
+              className="text-[11px] font-normal text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
+              onClick={() => setShowManifestView(true)}
+            >
+              (Manif.)
+            </button>
+            <button
+              className="ui-button ui-button-primary min-h-9 px-2.5 text-[11px] text-white sm:min-h-8"
+              onClick={() => setShowNewProjectModal(true)}
+            >
+              + new project
+            </button>
           </div>
+        </div>
+      </div>
 
-          <div className="w-full sm:w-[210px]">
-            <div className="mb-1 text-left text-[11px] font-medium text-neutral-700 sm:text-right">
-              Documentation Index v
-            </div>
-            <YearPreview />
+      <div className="scrollbar-thin flex-1 overflow-y-auto px-2 pb-3 sm:px-3 sm:pb-4" style={{ minHeight: 0 }}>
+        <div className="grid gap-4 sm:gap-6">
+          <DocumentationMirrorTree model={documentationModel} />
+
+          <div className="grid gap-4 sm:gap-6 xl:grid-cols-2 xl:gap-8">
+            {state.projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                projectId={project.id}
+                projectName={project.name}
+                onOpenFile={setOpenFileId}
+                onToast={setToast}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -244,6 +662,19 @@ export function PageB() {
                 Create
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {showManifestView && (
+        <Modal title="Documentation Mode Manifest" onClose={() => setShowManifestView(false)}>
+          <div className="max-h-[72vh] overflow-y-auto pr-1">
+            <div className="mb-3 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+              Temporary internal reference
+            </div>
+            <pre className="whitespace-pre-wrap text-sm leading-6 text-neutral-800">
+              {DOCUMENTATION_MODE_MANIFEST}
+            </pre>
           </div>
         </Modal>
       )}

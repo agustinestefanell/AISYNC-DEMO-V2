@@ -11,6 +11,7 @@ import {
   buildFolderSeed,
   countArtifacts,
   createWorkerLabel,
+  getTeamCode,
   getInitialTeamsMapState,
   getProviderDisplayName,
   getRoleLabel,
@@ -32,6 +33,18 @@ function getSavingDefaultShortLabel(value: DocumentationSavingDefault) {
   if (value === 'Documentation Mode') return 'Docs Mode';
   if (value === 'Team Workspace') return 'Team Save';
   return 'Audit Log';
+}
+
+function padDocumentIndex(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+function buildPromotedSubManagerName(smIndex: string, suffix: string) {
+  return `${smIndex}-SM-${suffix.trim()}`;
+}
+
+function buildPromotedWorkerName(smIndex: string, workerIndex: number, suffix: string) {
+  return `${smIndex}-${padDocumentIndex(workerIndex)}-W-${suffix.trim()}`;
 }
 
 function sortNodesForDisplay(nodes: TeamsGraphNode[]) {
@@ -1570,6 +1583,14 @@ export function PageD() {
   const [zoomOutSignal, setZoomOutSignal] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
   const [inlineRename, setInlineRename] = useState<{ nodeId: string; value: string } | null>(null);
+  const [promotionNamingDraft, setPromotionNamingDraft] = useState<null | {
+    promotedAgentId: string;
+    teamId: string;
+    smIndex: string;
+    subManagerSuffix: string;
+    worker1Suffix: string;
+    worker2Suffix: string;
+  }>(null);
 
   useEffect(() => {
     saveTeamsMapState(teamsState);
@@ -1865,12 +1886,51 @@ export function PageD() {
       return;
     }
 
+    const subManagerCount =
+      teamsState.teamsGraph.filter((node) => node.teamId === selectedNode.teamId && node.type === 'senior_manager')
+        .length + 1;
+    const smIndex = padDocumentIndex(subManagerCount);
+    const teamCode = getTeamCode(selectedNode.teamId);
+
+    setPromotionNamingDraft({
+      promotedAgentId: promotedAgent.id,
+      teamId: selectedNode.teamId,
+      smIndex,
+      subManagerSuffix: `${teamCode}-Lead`,
+      worker1Suffix: `${teamCode}-Specialist`,
+      worker2Suffix: `${teamCode}-Support`,
+    });
+  };
+
+  const handleConfirmPromotionNames = () => {
+    if (!selectedNode || !promotionNamingDraft) {
+      return;
+    }
+
+    const promotedAgent = teamsState.teamsGraph.find((node) => node.id === promotionNamingDraft.promotedAgentId) ?? null;
+    if (!promotedAgent || promotedAgent.type !== 'worker') {
+      setPromotionNamingDraft(null);
+      setToast('Selected worker is no longer available for promotion.');
+      return;
+    }
+
+    const subManagerSuffix = promotionNamingDraft.subManagerSuffix.trim();
+    const worker1Suffix = promotionNamingDraft.worker1Suffix.trim();
+    const worker2Suffix = promotionNamingDraft.worker2Suffix.trim();
+    if (!subManagerSuffix || !worker1Suffix || !worker2Suffix) {
+      setToast('Define names for the new sub-manager and both workers before confirming.');
+      return;
+    }
+
+    const newSubManagerLabel = buildPromotedSubManagerName(promotionNamingDraft.smIndex, subManagerSuffix);
+    const newWorker1Label = buildPromotedWorkerName(promotionNamingDraft.smIndex, 1, worker1Suffix);
+    const newWorker2Label = buildPromotedWorkerName(promotionNamingDraft.smIndex, 2, worker2Suffix);
     const childBaseId = `${selectedNode.teamId}_${Date.now()}`;
     const defaultChildren: TeamsGraphNode[] = [
       {
         id: `${childBaseId}_worker_1`,
         type: 'worker',
-        label: 'Worker 1',
+        label: newWorker1Label,
         provider: PROVIDERS[(PROVIDERS.indexOf(promotedAgent.provider) + 1) % PROVIDERS.length],
         parentId: promotedAgent.id,
         teamId: selectedNode.teamId,
@@ -1878,7 +1938,7 @@ export function PageD() {
       {
         id: `${childBaseId}_worker_2`,
         type: 'worker',
-        label: 'Worker 2',
+        label: newWorker2Label,
         provider: PROVIDERS[(PROVIDERS.indexOf(promotedAgent.provider) + 2) % PROVIDERS.length],
         parentId: promotedAgent.id,
         teamId: selectedNode.teamId,
@@ -1893,15 +1953,23 @@ export function PageD() {
             ? {
                 ...node,
                 type: 'senior_manager' as const,
+                label: newSubManagerLabel,
                 phaseState: 'In Review' as const,
+                documentationHistory: {
+                  ...node.documentationHistory,
+                  historicalWorkerLabel:
+                    node.documentationHistory?.historicalWorkerLabel ?? node.label,
+                },
               }
             : node,
         ),
         ...defaultChildren,
       ],
     }));
-    setSelectedAgentId(promotedAgent.id);
-    setToast('Worker promoted to sub-manager. Two child workers created.');
+    setPromotionNamingDraft(null);
+    setSelectedNodeId(null);
+    setSelectedAgentId('');
+    setToast('Worker promoted to sub-manager. New branch created with configured names.');
   };
 
   const handleEraseAgent = () => {
@@ -2259,7 +2327,94 @@ export function PageD() {
         </Modal>
       )}
 
-      {selectedNode && (
+      {promotionNamingDraft && (
+        <Modal
+          title="Configure Promoted Branch"
+          onClose={() => setPromotionNamingDraft(null)}
+          width="max-w-lg"
+        >
+          <div className="grid gap-4">
+            <div className="text-xs leading-[1.5] text-neutral-600">
+              Define the initial visible names before creating the new documentary branch. The
+              numeric prefixes are generated by the system and the suffixes stay editable.
+            </div>
+
+            <div className="grid gap-3">
+              <label className="grid gap-1">
+                <span className="ui-label">New Sub-Manager</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
+                    {promotionNamingDraft.smIndex}-SM-
+                  </div>
+                  <input
+                    className="ui-input text-xs"
+                    value={promotionNamingDraft.subManagerSuffix}
+                    onChange={(event) =>
+                      setPromotionNamingDraft((current) =>
+                        current ? { ...current, subManagerSuffix: event.target.value } : current,
+                      )
+                    }
+                    autoFocus
+                  />
+                </div>
+              </label>
+
+              <label className="grid gap-1">
+                <span className="ui-label">New Worker 1</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
+                    {promotionNamingDraft.smIndex}-01-W-
+                  </div>
+                  <input
+                    className="ui-input text-xs"
+                    value={promotionNamingDraft.worker1Suffix}
+                    onChange={(event) =>
+                      setPromotionNamingDraft((current) =>
+                        current ? { ...current, worker1Suffix: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+              </label>
+
+              <label className="grid gap-1">
+                <span className="ui-label">New Worker 2</span>
+                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
+                    {promotionNamingDraft.smIndex}-02-W-
+                  </div>
+                  <input
+                    className="ui-input text-xs"
+                    value={promotionNamingDraft.worker2Suffix}
+                    onChange={(event) =>
+                      setPromotionNamingDraft((current) =>
+                        current ? { ...current, worker2Suffix: event.target.value } : current,
+                      )
+                    }
+                  />
+                </div>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                className="ui-button text-neutral-700"
+                onClick={() => setPromotionNamingDraft(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="ui-button ui-button-primary text-white"
+                onClick={handleConfirmPromotionNames}
+              >
+                Edit Names & Create Branch
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {selectedNode && !promotionNamingDraft && (
         <Modal
           title={`Edit Team - ${selectedNode.label}`}
           onClose={() => setSelectedNodeId(null)}

@@ -10,6 +10,15 @@ export type WorkPhaseState = 'Open' | 'In Review' | 'Closed';
 export type AuditAnswerContentType = 'message-selection';
 export type AuditAnswerSourceAgentType = 'general-manager' | 'sub-manager' | 'worker';
 export type WorkspaceVersionSource = 'main' | 'team';
+export type DocumentationOriginWorkspace =
+  | 'main-workspace'
+  | 'team-workspace'
+  | 'documentation-mode'
+  | 'audit-log'
+  | 'cross-verification';
+export type DocumentationManifestStatus = 'active' | 'archived' | 'promoted';
+export type DocumentationRecordClass = 'team-record' | 'agent-record' | 'working-record';
+export type DocumentationSensitivityLevel = 'internal' | 'confidential' | 'restricted';
 export type ReviewForwardSourceKind =
   | 'general-manager'
   | 'main-worker'
@@ -63,6 +72,107 @@ export interface SavedFile {
   createdAt: string;
 }
 
+export interface DocumentationRepositoryRoot {
+  path: string;
+  selectedByUser: boolean;
+  updatedAt: string;
+}
+
+export interface DocumentationTeamFolder {
+  teamId: string;
+  teamLabel: string;
+  parentTeamId: string | null;
+  rootAgentId: string | null;
+  path: string;
+  agentUnitIds: string[];
+  childTeamIds: string[];
+}
+
+export interface DocumentationAgentUnit {
+  unitId: string;
+  stableIdentityId: string;
+  teamId: string;
+  teamLabel: string;
+  agentId: string;
+  agentLabel: string;
+  agentRole: TeamsNodeType;
+  parentTeamId: string | null;
+  parentAgentId: string | null;
+  treeParentUnitId: string | null;
+  path: string;
+  createdAt: string;
+  updatedAt: string;
+  historical: boolean;
+  lifecycleStage: 'current' | 'historical-worker-stage';
+}
+
+export interface DocumentationManifestBase {
+  manifest_id: string;
+  team_id: string;
+  team_label: string;
+  agent_id: string | null;
+  agent_label: string | null;
+  agent_role: string | null;
+  parent_team_id: string | null;
+  parent_agent_id: string | null;
+  created_at: string;
+  updated_at: string;
+  origin_workspace: DocumentationOriginWorkspace;
+  status: DocumentationManifestStatus;
+  record_class: DocumentationRecordClass;
+  sensitivity_level: DocumentationSensitivityLevel;
+  retention_rule: string;
+  official_copy: boolean;
+  path: string;
+  checksum: string;
+  related_audit_events: string[];
+}
+
+export interface DocumentationTeamManifest extends DocumentationManifestBase {
+  kind: 'team';
+  team_folder_id: string;
+}
+
+export interface DocumentationAgentManifest extends DocumentationManifestBase {
+  kind: 'agent';
+  agent_unit_id: string;
+  stable_identity_id: string;
+  visible_label: string;
+}
+
+export interface DocumentationIndexEntry {
+  id: string;
+  entryKind: 'team' | 'agent' | 'file';
+  teamId: string;
+  teamLabel: string;
+  agentId: string | null;
+  agentLabel: string | null;
+  agentRole: string | null;
+  eventId: string | null;
+  date: string | null;
+  status: string;
+  origin: string | null;
+  destination: string | null;
+  auditEventIds: string[];
+  path: string;
+  relatedFileId?: string;
+}
+
+export interface DocumentationModeModel {
+  root: DocumentationRepositoryRoot;
+  teamFolders: DocumentationTeamFolder[];
+  agentUnits: DocumentationAgentUnit[];
+  teamManifests: DocumentationTeamManifest[];
+  agentManifests: DocumentationAgentManifest[];
+  indexEntries: DocumentationIndexEntry[];
+  compatibility: {
+    auditLog: true;
+    calendarMode: true;
+    complianceReady: true;
+    dataSafetyReady: true;
+  };
+}
+
 export interface CalendarEvent {
   id: string;
   projectId: string;
@@ -103,6 +213,9 @@ export interface TeamsGraphNode {
   parentId: string | null;
   teamId: string;
   phaseState?: WorkPhaseState;
+  documentationHistory?: {
+    historicalWorkerLabel?: string | null;
+  };
 }
 
 export interface TeamFolderItem {
@@ -198,6 +311,7 @@ export interface AppState {
   drafts: Record<AgentRole, string>;
   documentLocks: Record<AgentRole, boolean>;
   workspaceVersions: Record<AgentRole, WorkspaceVersion[]>;
+  documentationRoot: DocumentationRepositoryRoot;
   projects: Project[];
   savedFiles: SavedFile[];
   calendarEvents: CalendarEvent[];

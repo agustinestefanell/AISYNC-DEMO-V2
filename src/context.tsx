@@ -5,6 +5,7 @@ import type {
   AuditAnswerPayload,
   AppState,
   CalendarEvent,
+  DocumentationRepositoryRoot,
   FileType,
   Message,
   Page,
@@ -23,6 +24,7 @@ export const GENERAL_MANAGER_LABEL = 'AI General Manager';
 
 type Action =
   | { type: 'SET_PAGE'; page: Page }
+  | { type: 'SET_DOCUMENTATION_ROOT'; root: DocumentationRepositoryRoot }
   | { type: 'SET_WORKSPACE_FOCUS'; agent: AgentRole | null }
   | { type: 'SET_SECONDARY_WORKSPACE'; workspace: SecondaryWorkspaceTarget | null }
   | { type: 'OPEN_CROSS_VERIFICATION_ROUTE'; payload?: AuditAnswerPayload | null }
@@ -48,6 +50,7 @@ type Action =
 interface PersistedState {
   projectName?: string;
   userName?: string;
+  documentationRoot?: DocumentationRepositoryRoot;
   messages?: Partial<Record<AgentRole, Message[]>>;
   drafts?: Partial<Record<AgentRole, string>>;
   documentLocks?: Partial<Record<AgentRole, boolean>>;
@@ -65,6 +68,7 @@ interface PersistedState {
 }
 
 function buildSeedState(): AppState {
+  const now = new Date().toISOString();
   return {
     currentPage: 'D',
     projectName: 'AISync Demo Project',
@@ -93,6 +97,11 @@ function buildSeedState(): AppState {
       manager: [],
       worker1: [],
       worker2: [],
+    },
+    documentationRoot: {
+      path: '/AISync_Repository',
+      selectedByUser: false,
+      updatedAt: now,
     },
     projects: seedProjects,
     savedFiles: seedFiles,
@@ -231,6 +240,7 @@ function resolvePersistedState(parsed: PersistedState, seed: AppState) {
   return {
     projectName: parsed.projectName ?? seed.projectName,
     userName: resolvedUserName,
+    documentationRoot: parsed.documentationRoot ?? seed.documentationRoot,
     messages: {
       manager: parsed.messages?.manager ?? seed.messages.manager,
       worker1: parsed.messages?.worker1 ?? seed.messages.worker1,
@@ -276,6 +286,11 @@ function reducer(state: AppState, action: Action): AppState {
         currentPage: action.page,
         selectedWorkspaceVersion:
           action.page === 'H' ? state.selectedWorkspaceVersion : null,
+      };
+    case 'SET_DOCUMENTATION_ROOT':
+      return {
+        ...state,
+        documentationRoot: action.root,
       };
     case 'SET_WORKSPACE_FOCUS':
       return { ...state, workspaceFocusAgent: action.agent };
@@ -452,6 +467,7 @@ function serializeState(state: AppState): PersistedState {
   return {
     projectName: state.projectName,
     userName: state.userName,
+    documentationRoot: state.documentationRoot,
     messages: state.messages,
     drafts: state.drafts,
     documentLocks: state.documentLocks,
