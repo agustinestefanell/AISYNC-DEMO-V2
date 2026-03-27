@@ -1711,37 +1711,18 @@ export function PageB() {
     activeView === 'structure' ? (
       <DocumentationMirrorTree model={documentationModel} />
     ) : activeView === 'repository' ? (
-      <div className="grid gap-4 sm:gap-6">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <DocumentationStatCard
-            label="Repository Root"
-            value={documentationModel.root.path}
-            meta="User-defined anchor for the shared documentary repository."
-          />
-          <DocumentationStatCard
-            label="Teams"
-            value={String(documentationModel.teamFolders.length)}
-            meta="Documentary team folders mirrored from the current Teams structure."
-          />
-          <DocumentationStatCard
-            label="Agent Units"
-            value={String(documentationModel.agentUnits.length)}
-            meta="Documentary units generated from sub-managers, workers, and preserved historical stages."
-          />
-          <DocumentationStatCard
-            label="Indexed Records"
-            value={String(documentationModel.indexEntries.length)}
-            meta="Cross-view metadata ready for repository, audit, and investigation flows."
-          />
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <span>Root: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.root.path}</span></span>
+            <span>Teams: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.teamFolders.length}</span></span>
+            <span>Agent Units: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.agentUnits.length}</span></span>
+            <span>Indexed Records: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.indexEntries.length}</span></span>
+          </div>
         </div>
 
-        <div className="ui-surface rounded-[22px] px-4 py-4 sm:px-5">
-          <div className="mb-3 flex items-center gap-3">
-            <h3 className="text-sm font-semibold tracking-[0.08em] text-neutral-900">Repository Workspace</h3>
-            <div className="h-px flex-1 bg-neutral-200" />
-          </div>
-          <div className="grid gap-4">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_repeat(4,minmax(0,0.8fr))]">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="grid gap-x-2 gap-y-2 xl:grid-cols-[minmax(220px,1.45fr)_repeat(5,minmax(118px,0.72fr))_auto] xl:items-end">
               <label className="grid gap-1">
                 <span className="ui-label">Search repository</span>
                 <input
@@ -1800,34 +1781,31 @@ export function PageB() {
               </label>
 
               <label className="grid gap-1">
-                <span className="ui-label">State / Date</span>
-                <div className="grid gap-2">
-                  <select
-                    className="ui-input text-xs"
-                    value={repositoryStatusFilter}
-                    onChange={(event) => setRepositoryStatusFilter(event.target.value)}
-                  >
-                    <option value="all">All states</option>
-                    <option value="Draft">Draft</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Under Review">Under Review</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Locked">Locked</option>
-                  </select>
-                  <input
-                    className="ui-input text-xs"
-                    type="date"
-                    value={repositoryDateFilter}
-                    onChange={(event) => setRepositoryDateFilter(event.target.value)}
-                  />
-                </div>
+                <span className="ui-label">State</span>
+                <select
+                  className="ui-input text-xs"
+                  value={repositoryStatusFilter}
+                  onChange={(event) => setRepositoryStatusFilter(event.target.value)}
+                >
+                  <option value="all">All states</option>
+                  <option value="Draft">Draft</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Under Review">Under Review</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Locked">Locked</option>
+                </select>
               </label>
-            </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
-              <div className="text-xs text-neutral-600">
-                {repositoryFilteredItems.length} repository items available from the shared documentary base.
-              </div>
+              <label className="grid gap-1">
+                <span className="ui-label">Date</span>
+                <input
+                  className="ui-input text-xs"
+                  type="date"
+                  value={repositoryDateFilter}
+                  onChange={(event) => setRepositoryDateFilter(event.target.value)}
+                />
+              </label>
+              <div className="flex items-end justify-end">
               <button
                 className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
                 onClick={() => {
@@ -1842,14 +1820,22 @@ export function PageB() {
                 Reset filters
               </button>
             </div>
+          </div>
+        </div>
 
-            <div
-              className={
-                repositoryFocusMode === 'detail'
-                  ? 'grid gap-4'
-                  : 'grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] xl:items-start'
-              }
-            >
+        <div className="ui-surface min-h-0 flex flex-1 flex-col overflow-hidden rounded-[22px] px-4 py-3 sm:px-5">
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <span className="text-neutral-800 normal-case tracking-normal">
+              {repositoryFilteredItems.length} repository items available from the shared documentary base.
+            </span>
+          </div>
+          <div
+            className={
+              repositoryFocusMode === 'detail'
+                ? 'grid min-h-0 flex-1 gap-4'
+                : 'grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] xl:items-stretch'
+            }
+          >
               {repositoryFocusMode === 'detail' && selectedRepositoryItem ? (
                 <div className="ui-surface rounded-[20px] px-4 py-4">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
@@ -1860,7 +1846,7 @@ export function PageB() {
                   </div>
                 </div>
               ) : (
-                <div className="grid max-h-[72vh] gap-3 overflow-y-auto pr-1 xl:min-h-[56vh]">
+                <div className="grid min-h-0 content-start gap-3 overflow-y-auto pr-1">
                   {repositoryFilteredItems.map((item) => (
                     <RepositoryItemCard
                       key={item.id}
@@ -1887,7 +1873,7 @@ export function PageB() {
                 </div>
               )}
 
-              <div className="ui-surface-subtle rounded-[20px] px-4 py-4 xl:sticky xl:top-4">
+              <div className="ui-surface-subtle rounded-[20px] px-4 py-4 xl:sticky xl:top-0">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                   Document Detail
                 </div>
@@ -1904,43 +1890,22 @@ export function PageB() {
                   </div>
                 )}
               </div>
-            </div>
           </div>
         </div>
       </div>
     ) : activeView === 'audit' ? (
-      <div className="grid gap-4 sm:gap-6">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <DocumentationStatCard
-            label="Audit Records"
-            value={String(auditFilteredEntries.length)}
-            meta="Operational audit rows derived from the same documentary base used by Repository View."
-          />
-          <DocumentationStatCard
-            label="Controlled Docs"
-            value={String(documentationModel.repositoryItems.filter((item) => item.documentState === 'Locked').length)}
-            meta="Documents currently marked as locked inside the repository model."
-          />
-          <DocumentationStatCard
-            label="Under Review"
-            value={String(documentationModel.repositoryItems.filter((item) => item.documentState === 'Under Review').length)}
-            meta="Documents still in active review according to the shared documentary state."
-          />
-          <DocumentationStatCard
-            label="Audit Links"
-            value={String(auditFilteredEntries.reduce((sum, entry) => sum + entry.auditEventIds.length, 0))}
-            meta="Direct event references already linked to documentary rows."
-          />
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <span>Audit Records: <span className="text-neutral-800 normal-case tracking-normal">{auditFilteredEntries.length}</span></span>
+            <span>Controlled Docs: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.repositoryItems.filter((item) => item.documentState === 'Locked').length}</span></span>
+            <span>Under Review: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.repositoryItems.filter((item) => item.documentState === 'Under Review').length}</span></span>
+            <span>Audit Links: <span className="text-neutral-800 normal-case tracking-normal">{auditFilteredEntries.reduce((sum, entry) => sum + entry.auditEventIds.length, 0)}</span></span>
+          </div>
         </div>
 
-        <div className="ui-surface rounded-[22px] px-4 py-4 sm:px-5">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="text-sm font-semibold tracking-[0.08em] text-neutral-900">
-              Audit Log
-            </div>
-            <div className="h-px flex-1 bg-neutral-200" />
-          </div>
-          <div className="grid gap-4">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="grid gap-x-3 gap-y-2 xl:grid-cols-[repeat(4,minmax(150px,1fr))_auto] xl:items-end">
             {false ? recentIndexEntries.map((entry) => (
               <div key={entry.id} className="ui-surface-subtle rounded-[16px] px-4 py-3 text-xs text-neutral-700">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1956,7 +1921,7 @@ export function PageB() {
               </div>
             )) : (
               <>
-                <div className="grid gap-3 xl:grid-cols-[repeat(4,minmax(0,1fr))]">
+                <div className="grid gap-x-3 gap-y-2 xl:grid-cols-[repeat(4,minmax(150px,1fr))_auto] xl:items-end">
                   <label className="grid gap-1">
                     <span className="ui-label">Document state</span>
                     <select
@@ -2014,85 +1979,67 @@ export function PageB() {
                       onChange={(event) => setAuditDateFilter(event.target.value)}
                     />
                   </label>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
-                  <div className="text-xs text-neutral-600">
-                    {auditFilteredEntries.length} audit records available from the shared documentary base.
+                  <div className="flex items-end justify-end">
+                    <button
+                      className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
+                      onClick={() => {
+                        setAuditStateFilter('all');
+                        setAuditEventFilter('all');
+                        setAuditResponsibleFilter('all');
+                        setAuditDateFilter('');
+                      }}
+                    >
+                      Reset audit filters
+                    </button>
                   </div>
-                  <button
-                    className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
-                    onClick={() => {
-                      setAuditStateFilter('all');
-                      setAuditEventFilter('all');
-                      setAuditResponsibleFilter('all');
-                      setAuditDateFilter('');
-                    }}
-                  >
-                    Reset audit filters
-                  </button>
-                </div>
-
-                <div className="grid gap-3">
-                  {auditFilteredEntries.map((entry) => (
-                    <AuditEntryCard
-                      key={entry.id}
-                      entry={entry}
-                      onOpenDocument={() => focusRepositoryDocument(entry.repositoryItemId)}
-                      onOpenFile={
-                        entry.relatedFileId &&
-                        state.savedFiles.some((file) => file.id === entry.relatedFileId)
-                          ? () => focusRepositoryDocument(entry.repositoryItemId, { openFile: true })
-                          : undefined
-                      }
-                    />
-                  ))}
-
-                  {auditFilteredEntries.length === 0 ? (
-                    <div className="ui-surface-subtle rounded-[18px] px-4 py-6 text-sm text-neutral-600">
-                      No audit records match the current control filters.
-                    </div>
-                  ) : null}
                 </div>
               </>
             )}
           </div>
         </div>
+
+        <div className="ui-surface min-h-0 flex flex-1 flex-col overflow-hidden rounded-[22px] px-4 py-3 sm:px-5">
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <span className="text-neutral-800 normal-case tracking-normal">
+              {auditFilteredEntries.length} audit records available from the shared documentary base.
+            </span>
+          </div>
+          <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1">
+                {auditFilteredEntries.map((entry) => (
+                  <AuditEntryCard
+                    key={entry.id}
+                    entry={entry}
+                    onOpenDocument={() => focusRepositoryDocument(entry.repositoryItemId)}
+                    onOpenFile={
+                      entry.relatedFileId &&
+                      state.savedFiles.some((file) => file.id === entry.relatedFileId)
+                        ? () => focusRepositoryDocument(entry.repositoryItemId, { openFile: true })
+                        : undefined
+                    }
+                  />
+                ))}
+
+                {auditFilteredEntries.length === 0 ? (
+                  <div className="ui-surface-subtle rounded-[18px] px-4 py-6 text-sm text-neutral-600">
+                    No audit records match the current control filters.
+                  </div>
+                ) : null}
+          </div>
+        </div>
       </div>
     ) : activeView === 'investigate' ? (
-      <div className="grid gap-4 sm:gap-6">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <DocumentationStatCard
-            label="Threads"
-            value={String(investigateThreads.length)}
-            meta="Document threads reconstructed from the same shared documentary and audit base."
-          />
-          <DocumentationStatCard
-            label="Timeline Groups"
-            value={String(investigateTimelineGroups.length)}
-            meta="Date buckets currently carrying meaningful documentary evolution."
-          />
-          <DocumentationStatCard
-            label="Versioned Docs"
-            value={String(investigateThreads.filter((thread) => thread.documentVersion && thread.documentVersion !== 'v1').length)}
-            meta="Documents whose chronology already shows version progression."
-          />
-          <DocumentationStatCard
-            label="Review Paths"
-            value={String(investigateThreads.filter((thread) => thread.documentState === 'Under Review').length)}
-            meta="Investigative lanes still in active review."
-          />
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+            <span>Threads: <span className="text-neutral-800 normal-case tracking-normal">{investigateThreads.length}</span></span>
+            <span>Timeline Groups: <span className="text-neutral-800 normal-case tracking-normal">{investigateTimelineGroups.length}</span></span>
+            <span>Versioned Docs: <span className="text-neutral-800 normal-case tracking-normal">{investigateThreads.filter((thread) => thread.documentVersion && thread.documentVersion !== 'v1').length}</span></span>
+            <span>Review Paths: <span className="text-neutral-800 normal-case tracking-normal">{investigateThreads.filter((thread) => thread.documentState === 'Under Review').length}</span></span>
+          </div>
         </div>
 
-        <div className="ui-surface rounded-[22px] px-4 py-4 sm:px-5">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="text-sm font-semibold tracking-[0.08em] text-neutral-900">
-              Investigative Chronology
-            </div>
-            <div className="h-px flex-1 bg-neutral-200" />
-          </div>
-          <div className="grid gap-4">
-            <div className="grid gap-3 xl:grid-cols-[repeat(5,minmax(0,1fr))]">
+        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
+          <div className="grid gap-2 xl:grid-cols-[repeat(5,minmax(0,1fr))_auto] xl:items-end">
               <label className="grid gap-1">
                 <span className="ui-label">Project</span>
                 <select
@@ -2166,31 +2113,31 @@ export function PageB() {
                   onChange={(event) => setInvestigateDateFilter(event.target.value)}
                 />
               </label>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
-              <div className="text-xs text-neutral-600">
-                {investigateThreads.length} investigative threads available from the shared documentary base.
+              <div className="flex items-end justify-end">
+                <button
+                  className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
+                  onClick={() => {
+                    setInvestigateProjectFilter('all');
+                    setInvestigateTeamFilter('all');
+                    setInvestigateWorkspaceFilter('all');
+                    setInvestigateKindFilter('all');
+                    setInvestigateDateFilter('');
+                  }}
+                >
+                  Reset investigation filters
+                </button>
               </div>
-              <button
-                className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
-                onClick={() => {
-                  setInvestigateProjectFilter('all');
-                  setInvestigateTeamFilter('all');
-                  setInvestigateWorkspaceFilter('all');
-                  setInvestigateKindFilter('all');
-                  setInvestigateDateFilter('');
-                }}
-              >
-                Reset investigation filters
-              </button>
-            </div>
+          </div>
+        </div>
 
-            <div className="grid gap-4">
+        <div className="ui-surface min-h-0 flex flex-1 flex-col overflow-hidden rounded-[22px] px-4 py-3 sm:px-5">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
               {investigateTimelineGroups.map((group) => (
                 <div key={group.date} className="grid gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                    {group.date === 'n/a' ? 'Undated context' : `Timeline block · ${group.date}`}
+                    {group.date === 'n/a'
+                      ? `Undated context · ${investigateThreads.length} investigative threads available from the shared documentary base.`
+                      : `Timeline block · ${group.date} · ${investigateThreads.length} investigative threads available from the shared documentary base.`}
                   </div>
                   <div className="grid gap-3">
                     {group.threads.map((thread) => (
@@ -2215,10 +2162,9 @@ export function PageB() {
                   No investigative chronology matches the selected context filters.
                 </div>
               ) : null}
-            </div>
+          </div>
           </div>
         </div>
-      </div>
     ) : (
       <div className="grid h-full min-h-0 gap-3">
         <div className="ui-surface h-full overflow-hidden rounded-[22px] px-4 py-4 sm:px-5">
@@ -2403,7 +2349,7 @@ export function PageB() {
               })}
             </div>
 
-            {activeView === 'knowledge-map' ? null : (
+            {activeView === 'structure' ? (
               <div className="ui-surface-subtle rounded-[18px] px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                   <span>{activeViewDefinition?.productRole === 'primary' ? 'Primary production view' : activeViewDefinition?.productRole === 'secondary' ? 'Secondary analytical view' : 'Supporting production view'}</span>
@@ -2414,13 +2360,17 @@ export function PageB() {
                   {activeViewDefinition?.description ?? getDocumentationViewDescription(activeView)}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
       <div
-        className={`scrollbar-thin flex-1 px-2 pb-3 sm:px-3 sm:pb-4 ${activeView === 'knowledge-map' ? 'overflow-hidden' : 'overflow-y-auto'}`}
+        className={`scrollbar-thin flex-1 px-2 pb-3 sm:px-3 sm:pb-4 ${
+          activeView === 'knowledge-map' || activeView === 'repository' || activeView === 'audit' || activeView === 'investigate'
+            ? 'overflow-hidden'
+            : 'overflow-y-auto'
+        }`}
         style={{ minHeight: 0 }}
       >
         {documentationViewContent}
@@ -2793,6 +2743,104 @@ function relaxKnowledgeGraphLayout({
   return working;
 }
 
+function getKnowledgeNodeRadius(node: KnowledgeGraphNode) {
+  const baseRadius = node.nodeType === 'document' || node.nodeType === 'saved-file' ? 3 : 2;
+  return baseRadius * KNOWLEDGE_GRAPH_TARGET.nodeSizeMultiplier;
+}
+
+function getKnowledgeGraphBounds(nodes: KnowledgeGraphNode[], positions: Map<string, { x: number; y: number }>) {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  nodes.forEach((node) => {
+    const position = positions.get(node.id);
+    if (!position) {
+      return;
+    }
+
+    const radius = getKnowledgeNodeRadius(node);
+    const label = node.label.length > 22 ? `${node.label.slice(0, 22)}...` : node.label;
+    const meta = getKnowledgeNodeMeta(node);
+    const labelHalfWidth = Math.max(radius, label.length * 2.8);
+    const metaHalfWidth = Math.max(radius, meta.length * 1.7);
+
+    minX = Math.min(minX, position.x - Math.max(labelHalfWidth, metaHalfWidth) - radius);
+    maxX = Math.max(maxX, position.x + Math.max(labelHalfWidth, metaHalfWidth) + radius);
+    minY = Math.min(minY, position.y - radius - 12);
+    maxY = Math.max(maxY, position.y + radius + 28);
+  });
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null;
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function getKnowledgeViewportFit({
+  bounds,
+  viewportWidth,
+  viewportHeight,
+}: {
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  viewportWidth: number;
+  viewportHeight: number;
+}) {
+  const paddingX = 48;
+  const paddingTop = 56;
+  const paddingBottom = 68;
+  const paddedWidth = Math.max(1, viewportWidth - paddingX * 2);
+  const paddedHeight = Math.max(1, viewportHeight - paddingTop - paddingBottom);
+  const graphWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const graphHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min(1.8, Math.max(0.35, Math.min(paddedWidth / graphWidth, paddedHeight / graphHeight)));
+  const offsetX = paddingX + (paddedWidth - graphWidth * scale) / 2 - bounds.minX * scale;
+  const offsetY = paddingTop + (paddedHeight - graphHeight * scale) / 2 - bounds.minY * scale;
+
+  return { scale, offsetX, offsetY };
+}
+
+function fitKnowledgeGraphPositions({
+  nodes,
+  positions,
+  viewportWidth,
+  viewportHeight,
+}: {
+  nodes: KnowledgeGraphNode[];
+  positions: Map<string, { x: number; y: number }>;
+  viewportWidth: number;
+  viewportHeight: number;
+}) {
+  const bounds = getKnowledgeGraphBounds(nodes, positions);
+  if (!bounds || viewportWidth <= 0 || viewportHeight <= 0) {
+    return positions;
+  }
+
+  const margin = Math.max(26, Math.min(52, Math.floor(Math.min(viewportWidth, viewportHeight) * 0.08)));
+  const availableWidth = Math.max(1, viewportWidth - margin * 2);
+  const availableHeight = Math.max(1, viewportHeight - margin * 2);
+  const graphWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const graphHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scaleX = availableWidth / graphWidth;
+  const scaleY = availableHeight / graphHeight;
+
+  const next = new Map<string, { x: number; y: number }>();
+  positions.forEach((position, id) => {
+    next.set(id, {
+      x: margin + (position.x - bounds.minX) * scaleX,
+      y: margin + (position.y - bounds.minY) * scaleY,
+    });
+  });
+
+  return next;
+}
+
 function KnowledgeMapCanvas({
   nodes,
   edges,
@@ -2811,6 +2859,7 @@ function KnowledgeMapCanvas({
   onOpenFile?: () => void;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const pointerStateRef = useRef<
     | { mode: 'pan'; pointerId: number; startX: number; startY: number; originX: number; originY: number }
     | {
@@ -2854,7 +2903,7 @@ function KnowledgeMapCanvas({
         const verticalWave = ((rowIndex + columnIndex) % 2 === 0 ? -1 : 1) * 5;
         positions.set(node.id, {
           x: 96 + columnIndex * 132 + jitter.x * 0.38,
-          y: 76 + rowIndex * 62 + verticalWave + jitter.y * 0.42,
+          y: 92 + rowIndex * 70 + verticalWave + jitter.y * 0.42,
         });
       });
     });
@@ -2862,7 +2911,7 @@ function KnowledgeMapCanvas({
     return {
       positions,
       width: 1000,
-      height: Math.max(420, maxRows * 62 + 120),
+      height: Math.max(500, maxRows * 70 + 150),
     };
   }, [nodes]);
   const forceLayout = useMemo(() => {
@@ -2883,25 +2932,59 @@ function KnowledgeMapCanvas({
     });
     return blended;
   }, [baseLayout.height, baseLayout.positions, baseLayout.width, edges, nodes]);
+  const canvasFrameWidth = viewportSize.width > 0 ? viewportSize.width : baseLayout.width;
+  const canvasFrameHeight = viewportSize.height > 0 ? viewportSize.height : baseLayout.height;
+  const autoFitLayout = useMemo(
+    () =>
+      fitKnowledgeGraphPositions({
+        nodes,
+        positions: forceLayout,
+        viewportWidth: canvasFrameWidth,
+        viewportHeight: canvasFrameHeight,
+      }),
+    [canvasFrameHeight, canvasFrameWidth, forceLayout, nodes],
+  );
   const [nodePositions, setNodePositions] = useState<Map<string, { x: number; y: number }>>(
     () => new Map(forceLayout),
   );
   const [viewport, setViewport] = useState<{ scale: number; offsetX: number; offsetY: number }>({
-    scale: KNOWLEDGE_GRAPH_TARGET.scale,
-    offsetX: 34,
-    offsetY: 28,
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
   });
   const selectedNodeId = selectedNode?.id ?? null;
 
   useEffect(() => {
-    setNodePositions((current) => {
+    const container = viewportRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateViewportSize = () => {
+      setViewportSize({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      });
+    };
+
+    updateViewportSize();
+    const observer = new ResizeObserver(() => {
+      updateViewportSize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setNodePositions(() => {
       const next = new Map<string, { x: number; y: number }>();
-      forceLayout.forEach((position, id) => {
-        next.set(id, current.get(id) ?? position);
+      autoFitLayout.forEach((position, id) => {
+        next.set(id, position);
       });
       return next;
     });
-  }, [forceLayout]);
+      setViewport({ scale: 1, offsetX: 0, offsetY: 0 });
+  }, [autoFitLayout]);
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -3018,7 +3101,7 @@ function KnowledgeMapCanvas({
   return (
     <div
       ref={viewportRef}
-      className="ui-surface-subtle relative min-h-[500px] overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0f172a_0%,#111827_100%)] px-1.5 py-1.5"
+      className="ui-surface-subtle relative min-h-[540px] overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0f172a_0%,#111827_100%)] px-1.5 py-1.5"
       onWheel={handleWheel}
       onPointerDown={handleViewportPointerDown}
       onPointerMove={handleViewportPointerMove}
@@ -3035,32 +3118,32 @@ function KnowledgeMapCanvas({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 left-4 z-10 max-w-[460px] rounded-[18px] border border-slate-700/70 bg-slate-950/74 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[320px] rounded-[16px] border border-slate-700/70 bg-slate-950/74 px-3 py-2 shadow-sm backdrop-blur">
         {selectedNode ? (
-          <div className="grid gap-2">
+          <div className="grid gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+              <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-300">
                 {selectedNode.nodeType.replace('-', ' ')}
               </span>
-              <span className="text-xs text-slate-400">{connectionCount} visible connection(s)</span>
+              <span className="text-[11px] text-slate-400">{connectionCount} visible connection(s)</span>
             </div>
-            <div className="text-sm font-semibold text-slate-100">{selectedNode.label}</div>
-            <div className="text-xs leading-[1.5] text-slate-300">
+            <div className="text-[13px] font-semibold text-slate-100">{selectedNode.label}</div>
+            <div className="text-[11px] leading-[1.45] text-slate-300">
               {[selectedNode.projectLabel, selectedNode.teamLabel, selectedNode.workspaceLabel]
                 .filter((value): value is string => Boolean(value))
                 .join(' · ') || selectedNode.description || 'No contextual metadata'}
             </div>
-            <div className="flex flex-wrap gap-2 text-[11px] text-slate-300">
+            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-slate-300">
               {selectedNode.documentState ? <span>State: {selectedNode.documentState}</span> : null}
               {selectedNode.documentVersion ? <span>Version: {selectedNode.documentVersion}</span> : null}
               {selectedNode.userLabel ? <span>USER: {selectedNode.userLabel}</span> : null}
               {selectedNode.lastResponsible ? <span>Responsible: {selectedNode.lastResponsible}</span> : null}
             </div>
-            <div className="pointer-events-auto flex flex-wrap gap-2">
+            <div className="pointer-events-auto flex flex-wrap gap-2 pt-0.5">
               {onOpenDocument ? (
                 <button
                   data-knowledge-map-action="true"
-                  className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
+                  className="ui-button min-h-7 px-2.5 text-[10px] text-neutral-700"
                   onClick={onOpenDocument}
                 >
                   Open in Repository View
@@ -3069,7 +3152,7 @@ function KnowledgeMapCanvas({
               {onOpenFile ? (
                 <button
                   data-knowledge-map-action="true"
-                  className="ui-button ui-button-primary min-h-8 px-3 text-[11px] text-white"
+                  className="ui-button ui-button-primary min-h-7 px-2.5 text-[10px] text-white"
                   onClick={onOpenFile}
                 >
                   Open file
@@ -3085,8 +3168,8 @@ function KnowledgeMapCanvas({
       <svg
         width="100%"
         height="100%"
-        viewBox={`0 0 ${baseLayout.width} ${baseLayout.height}`}
-        className="min-h-[460px] w-full"
+        viewBox={`0 0 ${canvasFrameWidth} ${canvasFrameHeight}`}
+        className="min-h-[520px] w-full"
       >
         <g transform={`translate(${viewport.offsetX} ${viewport.offsetY}) scale(${viewport.scale})`}>
           {edges.map((edge) => {
