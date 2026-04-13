@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppProvider, useApp } from './context';
 import { TopBar } from './components/TopBar';
 import { BottomNav } from './components/BottomNav';
+import { DocumentPage } from './components/DocumentPage';
 import { PageA } from './pages/PageA';
 import { PageB } from './pages/PageB';
 import { PageC } from './pages/PageC';
@@ -154,8 +155,13 @@ function AppInner() {
   }, []);
   const diagnosticsEnabled = diagnosticsParams?.has('responsive_diag') ?? false;
   const pageOverride = diagnosticsParams?.get('page');
+  const documentPageRequested = diagnosticsParams?.get('doc_page') === 'document';
 
   useEffect(() => {
+    if (documentPageRequested) {
+      return;
+    }
+
     if (pageOverrideAppliedRef.current) {
       return;
     }
@@ -168,6 +174,10 @@ function AppInner() {
 
     dispatch({ type: 'SET_PAGE', page: pageOverride as Page });
   }, [dispatch, pageOverride, state.currentPage]);
+
+  if (documentPageRequested) {
+    return <DocumentPage />;
+  }
 
   return (
     <div className="app-root-shell app-page-shell flex min-h-0 min-w-0 flex-col overflow-hidden">

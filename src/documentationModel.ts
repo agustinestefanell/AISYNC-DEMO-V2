@@ -173,19 +173,22 @@ function getSavedObjectDocumentState(savedObject: SavedObject) {
     return savedObject.payload.locked ? ('Locked' as const) : ('Approved' as const);
   }
   if (savedObject.objectType === 'handoff-package') {
-    return savedObject.status === 'archived' ? ('Approved' as const) : ('Under Review' as const);
+    return savedObject.status === 'archived' ? ('Archived' as const) : ('Under Review' as const);
   }
   if (savedObject.objectType === 'saved-selection') {
+    if (savedObject.status === 'archived') return 'Archived' as const;
     return savedObject.status === 'finalized' ? ('Approved' as const) : ('In Progress' as const);
   }
   if (savedObject.objectType === 'source-document-reference') {
     return 'Approved' as const;
   }
   if (savedObject.objectType === 'derived-document') {
+    if (savedObject.status === 'archived') return 'Archived' as const;
     if (savedObject.status === 'finalized') return 'Approved' as const;
     if (savedObject.status === 'draft') return 'Draft' as const;
     return 'In Progress' as const;
   }
+  if (savedObject.status === 'archived') return 'Archived' as const;
   if (savedObject.status === 'draft') return 'Draft' as const;
   return 'In Progress' as const;
 }

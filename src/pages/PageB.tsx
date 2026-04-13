@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { AgentPanel } from '../components/AgentPanel';
 import { CollapsibleManagerSidebar } from '../components/CollapsibleManagerSidebar';
 import { DocumentationMirrorTree, DocumentationTree } from '../components/DocumentationTree';
-import { FileViewer } from '../components/FileViewer';
 import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
 import { useApp } from '../context';
@@ -20,6 +19,8 @@ import type {
   DocumentationKnowledgeNode,
   DocumentationRepositoryItem,
   DocumentationViewMode,
+  SavedObject,
+  WorkspaceVersionReference,
 } from '../types';
 
 const DOCUMENTATION_MODE_MANIFEST = [
@@ -658,15 +659,33 @@ function isRepositoryDocumentItem(item: DocumentationRepositoryItem) {
   return item.itemType === 'file' || item.itemType === 'saved-object';
 }
 
+function getRepositoryItemTypeLabel(item: DocumentationRepositoryItem) {
+  if (item.objectType === 'checkpoint') return 'Checkpoint';
+  if (item.objectType === 'saved-selection') return 'Saved Selection';
+  if (item.objectType === 'handoff-package') return 'Handoff Package';
+  if (item.objectType === 'source-document-reference') return 'Source Reference';
+  if (item.objectType === 'derived-document') return 'Derived Document';
+  if (item.itemType === 'file') return 'File';
+  if (item.itemType === 'saved-object') return 'Saved Object';
+  if (item.itemType === 'agent-unit') return 'Agent Unit';
+  if (item.itemType === 'workspace-agent') return 'Workspace Agent';
+  return 'Team Folder';
+}
+
 function getRepositoryStatusLabel(item: DocumentationRepositoryItem) {
-  return item.documentState ?? item.status;
+  if (item.documentState) return item.documentState;
+  if (item.status === 'active') return 'Active';
+  if (item.status === 'archived') return 'Archived';
+  return item.status;
 }
 
 function getDocumentStateClasses(state: DocumentationDocumentState) {
+  if (state === 'Active') return 'border-cyan-200 bg-cyan-50 text-cyan-700';
   if (state === 'Draft') return 'border-neutral-200 bg-neutral-100 text-neutral-700';
   if (state === 'In Progress') return 'border-sky-200 bg-sky-50 text-sky-700';
   if (state === 'Under Review') return 'border-amber-200 bg-amber-50 text-amber-700';
   if (state === 'Approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (state === 'Archived') return 'border-stone-200 bg-stone-100 text-stone-700';
   return 'border-neutral-300 bg-neutral-900 text-white';
 }
 
@@ -679,14 +698,32 @@ function getAuditEventClasses(kind: DocumentationAuditEntry['eventKind']) {
   return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 }
 
+function getCheckpointVersionReference(savedObject: SavedObject | null): WorkspaceVersionReference | null {
+  if (!savedObject || savedObject.objectType !== 'checkpoint') {
+    return null;
+  }
+
+  const threadId = savedObject.payload.threadId;
+  const isBaseMainThread =
+    threadId === 'manager' || threadId === 'worker1' || threadId === 'worker2';
+  const isTeamWorkspace = savedObject.sourceWorkspace === 'team-workspace';
+
+  return {
+    source: isTeamWorkspace ? 'team' : 'main',
+    versionId: savedObject.payload.legacyVersionId,
+    threadId,
+    agent: !isTeamWorkspace && isBaseMainThread ? threadId : 'manager',
+    teamId: isTeamWorkspace ? savedObject.sourceTeamId ?? undefined : undefined,
+    panelScope: !isTeamWorkspace && !isBaseMainThread ? threadId : undefined,
+  };
+}
+
 const KNOWLEDGE_FOCUS_MODE_OPTIONS: Array<{ value: KnowledgeFocusMode; label: string }> = [
   { value: 'documents', label: 'Documents' },
   { value: 'users', label: 'Users' },
   { value: 'projects', label: 'Projects' },
-  { value: 'teams', label: 'Teams' },
   { value: 'folders', label: 'Folders' },
   { value: 'saved-files', label: 'Saved Files' },
-  { value: 'workspaces', label: 'Workspaces' },
   { value: 'document-types', label: 'Document Types' },
 ];
 
@@ -718,16 +755,16 @@ type InvestigationThread = {
   chronology: DocumentationAuditEntry[];
   firstSeen: string | null;
   lastSeen: string | null;
+  relatedActors: string[];
+  thematicText: string;
 };
 
 type KnowledgeFocusMode =
   | 'documents'
   | 'users'
   | 'projects'
-  | 'teams'
   | 'folders'
   | 'saved-files'
-  | 'workspaces'
   | 'document-types';
 
 type KnowledgeGraphNodeType =
@@ -746,6 +783,93 @@ type DocumentationHelpTopic =
   | 'audit'
   | 'investigate'
   | 'knowledge-map';
+
+type RepositoryAction = {
+  key: string;
+  label: string;
+  href?: string;
+  onClick?: () => void;
+  primary?: boolean;
+  newTab?: boolean;
+};
+
+function getAuditEntryActorLabel(entry: DocumentationAuditEntry) {
+  return entry.responsibleLabel ?? entry.userLabel ?? 'n/a';
+}
+
+function getAuditEntryTypeLabel(entry: DocumentationAuditEntry) {
+  return entry.documentKind ?? entry.objectType ?? entry.recordClass;
+}
+
+function getDocumentReadinessFields(item: DocumentationRepositoryItem) {
+  const isBackup = item.objectType === 'session-backup';
+  const isReference = item.objectType === 'source-document-reference';
+  const isWorking =
+    item.objectType === 'checkpoint' ||
+    item.objectType === 'saved-selection' ||
+    item.itemType === 'workspace-agent';
+  const isOutput =
+    item.itemType === 'file' ||
+    item.objectType === 'derived-document' ||
+    item.objectType === 'handoff-package';
+
+  const recordClass = isBackup
+    ? 'Backup'
+    : isReference
+      ? 'Reference'
+      : isOutput
+        ? 'Output'
+        : isWorking
+          ? 'Working'
+          : 'Working';
+
+  const sensitivity =
+    item.objectType === 'handoff-package' || item.lockState === true
+      ? 'Restricted'
+      : item.projectLabel || item.teamLabel !== 'Main Workspace'
+        ? 'Internal'
+        : 'Public';
+
+  const officialCopy = isBackup || isWorking ? 'No' : isReference || isOutput ? 'Yes' : 'No';
+
+  const accessScope =
+    item.sourceWorkspace === 'main-workspace'
+      ? 'Local cell'
+      : item.teamLabel && item.teamLabel !== 'Main Workspace'
+        ? 'Team'
+        : item.projectLabel
+          ? 'Project'
+          : 'Local cell';
+
+  const retentionReadiness =
+    isBackup || officialCopy === 'Yes'
+      ? 'Basic'
+      : item.auditEventIds.length > 0
+        ? 'Review needed'
+        : 'Not set';
+
+  const integrityReadiness =
+    item.auditEventIds.length > 0 || Boolean(item.documentVersion) || Boolean(item.path)
+      ? 'Basic trace'
+      : 'Not set';
+
+  const sourceOfTruth =
+    officialCopy === 'Yes'
+      ? 'Shared documentary base'
+      : item.provenanceSummary
+        ? 'Derived from source metadata'
+        : 'Working layer only';
+
+  return {
+    recordClass,
+    sensitivity,
+    officialCopy,
+    accessScope,
+    retentionReadiness,
+    integrityReadiness,
+    sourceOfTruth,
+  };
+}
 
 const DOCUMENTATION_HELP_LINKS: Array<{
   id: DocumentationHelpTopic;
@@ -844,7 +968,6 @@ export function PageB() {
   const [activeHelpTopic, setActiveHelpTopic] = useState<DocumentationHelpTopic | null>(null);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [openFileId, setOpenFileId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   const [activeView, setActiveView] = useState<DocumentationViewMode>('repository');
   const [repositoryQuery, setRepositoryQuery] = useState('');
@@ -856,21 +979,24 @@ export function PageB() {
   const [auditStateFilter, setAuditStateFilter] = useState('all');
   const [auditEventFilter, setAuditEventFilter] = useState('all');
   const [auditResponsibleFilter, setAuditResponsibleFilter] = useState('all');
+  const [auditTeamFilter, setAuditTeamFilter] = useState('all');
+  const [auditTypeFilter, setAuditTypeFilter] = useState('all');
   const [auditDateFilter, setAuditDateFilter] = useState('');
   const [investigateProjectFilter, setInvestigateProjectFilter] = useState('all');
   const [investigateTeamFilter, setInvestigateTeamFilter] = useState('all');
   const [investigateWorkspaceFilter, setInvestigateWorkspaceFilter] = useState('all');
   const [investigateKindFilter, setInvestigateKindFilter] = useState('all');
+  const [investigateThemeQuery, setInvestigateThemeQuery] = useState('');
   const [investigateDateFilter, setInvestigateDateFilter] = useState('');
   const [knowledgeProjectFilter, setKnowledgeProjectFilter] = useState('');
   const [knowledgeTeamFilter, setKnowledgeTeamFilter] = useState('all');
   const [knowledgeWorkspaceFilter, setKnowledgeWorkspaceFilter] = useState('all');
   const [knowledgeTypeFilter, setKnowledgeTypeFilter] = useState('all');
+  const [knowledgeActorFilter, setKnowledgeActorFilter] = useState('all');
+  const [knowledgeDateFilter, setKnowledgeDateFilter] = useState('');
   const [knowledgeFocusMode, setKnowledgeFocusMode] = useState<KnowledgeFocusMode>('documents');
   const [selectedKnowledgeNodeId, setSelectedKnowledgeNodeId] = useState<string | null>(null);
   const [selectedRepositoryItemId, setSelectedRepositoryItemId] = useState<string | null>(null);
-  const [showRepositoryDetailModal, setShowRepositoryDetailModal] = useState(false);
-  const [repositoryFocusMode, setRepositoryFocusMode] = useState<'list' | 'detail'>('list');
   const [teamsMapState, setTeamsMapState] = useState<TeamsMapState>(getInitialTeamsMapState);
 
   useEffect(() => {
@@ -891,9 +1017,6 @@ export function PageB() {
     };
   }, []);
 
-  const openFile = state.savedFiles.find((file) => file.id === openFileId) ?? null;
-  const openProject =
-    state.projects.find((project) => project.id === openFile?.projectId) ?? null;
   const documentationModel = useMemo(
     () =>
       buildDocumentationModeModel({
@@ -975,7 +1098,29 @@ export function PageB() {
       Array.from(
         new Set(
           documentationModel.auditEntries
-            .map((entry) => entry.responsibleLabel)
+            .map((entry) => getAuditEntryActorLabel(entry))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [documentationModel.auditEntries],
+  );
+  const auditTeamOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          documentationModel.auditEntries
+            .map((entry) => entry.teamLabel)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [documentationModel.auditEntries],
+  );
+  const auditTypeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          documentationModel.auditEntries
+            .map((entry) => getAuditEntryTypeLabel(entry))
             .filter((value): value is string => Boolean(value)),
         ),
       ).sort((left, right) => left.localeCompare(right)),
@@ -1106,6 +1251,15 @@ export function PageB() {
     selectedRepositoryItem && isRepositoryDocumentItem(selectedRepositoryItem)
       ? selectedRepositoryItem.projectLabel ?? null
       : null;
+  const repositoryResultSummary = useMemo(
+    () => ({
+      total: repositoryFilteredItems.length,
+      savedObjects: repositoryFilteredItems.filter((item) => item.itemType === 'saved-object').length,
+      controlled: repositoryFilteredItems.filter((item) => item.documentState === 'Locked').length,
+      underReview: repositoryFilteredItems.filter((item) => item.documentState === 'Under Review').length,
+    }),
+    [repositoryFilteredItems],
+  );
   const auditFilteredEntries = useMemo(
     () =>
       documentationModel.auditEntries
@@ -1115,11 +1269,15 @@ export function PageB() {
           const matchesEvent =
             auditEventFilter === 'all' || entry.eventKind === auditEventFilter;
           const matchesResponsible =
-            auditResponsibleFilter === 'all' || entry.responsibleLabel === auditResponsibleFilter;
+            auditResponsibleFilter === 'all' || getAuditEntryActorLabel(entry) === auditResponsibleFilter;
+          const matchesTeam =
+            auditTeamFilter === 'all' || entry.teamLabel === auditTeamFilter;
+          const matchesType =
+            auditTypeFilter === 'all' || getAuditEntryTypeLabel(entry) === auditTypeFilter;
           const matchesDate =
             !auditDateFilter || (entry.occurredAt ?? '').slice(0, 10) === auditDateFilter;
 
-          return matchesState && matchesEvent && matchesResponsible && matchesDate;
+          return matchesState && matchesEvent && matchesResponsible && matchesTeam && matchesType && matchesDate;
         })
         .sort((left, right) => (right.occurredAt ?? '').localeCompare(left.occurredAt ?? '')),
     [
@@ -1127,6 +1285,8 @@ export function PageB() {
       auditEventFilter,
       auditResponsibleFilter,
       auditStateFilter,
+      auditTeamFilter,
+      auditTypeFilter,
       documentationModel.auditEntries,
     ],
   );
@@ -1140,6 +1300,27 @@ export function PageB() {
             .sort((left, right) => (left.occurredAt ?? '').localeCompare(right.occurredAt ?? ''));
           const firstSeen = chronology[0]?.occurredAt ?? item.updatedAt;
           const lastSeen = chronology[chronology.length - 1]?.occurredAt ?? item.updatedAt;
+          const relatedActors = Array.from(
+            new Set(
+              chronology
+                .flatMap((entry) => [entry.responsibleLabel, entry.userLabel])
+                .filter((value): value is string => Boolean(value)),
+            ),
+          );
+          const thematicText = [
+            item.title,
+            item.projectLabel ?? '',
+            item.teamLabel,
+            item.sourceWorkspace,
+            item.documentKind ?? '',
+            item.userLabel ?? '',
+            item.lastResponsible ?? '',
+            item.provenanceSummary ?? '',
+            item.automaticTags?.join(' ') ?? '',
+            chronology.map((entry) => `${entry.eventLabel} ${entry.responsibleLabel ?? ''}`).join(' '),
+          ]
+            .join(' ')
+            .toLowerCase();
           return {
             repositoryItemId: item.id,
             title: item.title,
@@ -1156,9 +1337,12 @@ export function PageB() {
             chronology,
             firstSeen,
             lastSeen,
+            relatedActors,
+            thematicText,
           };
         })
         .filter((thread) => {
+          const query = investigateThemeQuery.trim().toLowerCase();
           const matchesProject =
             investigateProjectFilter === 'all' || thread.projectLabel === investigateProjectFilter;
           const matchesTeam =
@@ -1167,10 +1351,12 @@ export function PageB() {
             investigateWorkspaceFilter === 'all' || thread.sourceWorkspace === investigateWorkspaceFilter;
           const matchesKind =
             investigateKindFilter === 'all' || thread.documentKind === investigateKindFilter;
+          const matchesTheme =
+            query.length === 0 || thread.thematicText.includes(query);
           const matchesDate =
             !investigateDateFilter || (thread.lastSeen ?? '').slice(0, 10) === investigateDateFilter;
 
-          return matchesProject && matchesTeam && matchesWorkspace && matchesKind && matchesDate;
+          return matchesProject && matchesTeam && matchesWorkspace && matchesKind && matchesTheme && matchesDate;
         })
         .sort((left, right) => (right.lastSeen ?? '').localeCompare(left.lastSeen ?? '')),
     [
@@ -1180,6 +1366,7 @@ export function PageB() {
       investigateKindFilter,
       investigateProjectFilter,
       investigateTeamFilter,
+      investigateThemeQuery,
       investigateWorkspaceFilter,
     ],
   );
@@ -1196,6 +1383,18 @@ export function PageB() {
       }, []),
     [investigateThreads],
   );
+  const investigateContextSummary = useMemo(() => {
+    const actorCount = new Set(investigateThreads.flatMap((thread) => thread.relatedActors)).size;
+    const firstSeen = investigateThreads[investigateThreads.length - 1]?.firstSeen ?? null;
+    const lastSeen = investigateThreads[0]?.lastSeen ?? null;
+    return {
+      threadCount: investigateThreads.length,
+      actorCount,
+      firstSeen,
+      lastSeen,
+      query: investigateThemeQuery.trim(),
+    };
+  }, [investigateThreads, investigateThemeQuery]);
   const knowledgeProjectOptions = useMemo(
     () =>
       Array.from(
@@ -1237,6 +1436,18 @@ export function PageB() {
       ).sort((left, right) => left.localeCompare(right)),
     [documentationModel.knowledgeMap.nodes],
   );
+  const knowledgeActorOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          documentationModel.knowledgeMap.nodes
+            .filter((node) => node.nodeType === 'document')
+            .flatMap((node) => [node.userLabel, node.lastResponsible])
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [documentationModel.knowledgeMap.nodes],
+  );
   const knowledgeFilteredDocumentNodes = useMemo(() => {
     const effectiveProjectFilter =
       knowledgeProjectFilter || selectedRepositoryDocumentProject || knowledgeProjectOptions[0] || 'all';
@@ -1250,7 +1461,13 @@ export function PageB() {
         const matchesWorkspace =
           knowledgeWorkspaceFilter === 'all' || node.workspaceLabel === knowledgeWorkspaceFilter;
         const matchesType = knowledgeTypeFilter === 'all' || node.documentKind === knowledgeTypeFilter;
-        return matchesProject && matchesTeam && matchesWorkspace && matchesType;
+        const matchesActor =
+          knowledgeActorFilter === 'all' ||
+          node.userLabel === knowledgeActorFilter ||
+          node.lastResponsible === knowledgeActorFilter;
+        const matchesDate =
+          !knowledgeDateFilter || (node.updatedAt ?? '').slice(0, 10) === knowledgeDateFilter;
+        return matchesProject && matchesTeam && matchesWorkspace && matchesType && matchesActor && matchesDate;
       })
       .sort(
         (left, right) =>
@@ -1261,6 +1478,8 @@ export function PageB() {
     documentationModel.knowledgeMap.nodes,
     knowledgeProjectFilter,
     knowledgeProjectOptions,
+    knowledgeActorFilter,
+    knowledgeDateFilter,
     knowledgeTeamFilter,
     knowledgeTypeFilter,
     knowledgeWorkspaceFilter,
@@ -1406,31 +1625,67 @@ export function PageB() {
 
       if (knowledgeFocusMode === 'users') {
         addNode({ ...documentNode });
-        const userId = `focus:user:${documentNode.userLabel ?? 'unknown'}`;
-        addNode({
-          id: userId,
-          nodeType: 'user',
-          label: documentNode.userLabel ?? 'Unknown User',
-          description: 'Accountability lens',
-          repositoryItemId: null,
-          projectLabel: documentNode.projectLabel,
-          teamId: documentNode.teamId,
-          teamLabel: documentNode.teamLabel,
-          workspaceLabel: documentNode.workspaceLabel,
-          documentKind: null,
-          documentState: null,
-          documentVersion: null,
-          userLabel: documentNode.userLabel,
-          lastResponsible: documentNode.lastResponsible,
-          updatedAt: null,
-          auditLinked: documentNode.auditLinked,
-        });
-        addEdge({
-          id: `${userId}->${documentNode.id}:belongs-to`,
-          sourceId: userId,
-          targetId: documentNode.id,
-          edgeType: 'belongs-to',
-          label: 'accountable for',
+        const userNodes: Array<{
+          id: string;
+          label: string;
+          edgeLabel: string;
+          userLabel: string | null;
+          lastResponsible: string | null;
+        }> = [
+          {
+            id: `focus:user:owner:${documentNode.userLabel ?? 'unknown'}`,
+            label: documentNode.userLabel ?? 'Unknown User',
+            edgeLabel: 'owned by',
+            userLabel: documentNode.userLabel,
+            lastResponsible: documentNode.lastResponsible,
+          },
+          documentNode.lastResponsible && documentNode.lastResponsible !== documentNode.userLabel
+            ? {
+                id: `focus:user:responsible:${documentNode.lastResponsible}`,
+                label: documentNode.lastResponsible,
+                edgeLabel: 'responsible for',
+                userLabel: documentNode.userLabel,
+                lastResponsible: documentNode.lastResponsible,
+              }
+            : null,
+        ].filter(
+          (
+            entry,
+          ): entry is {
+            id: string;
+            label: string;
+            edgeLabel: string;
+            userLabel: string | null;
+            lastResponsible: string | null;
+          } => Boolean(entry),
+        );
+
+        userNodes.forEach((userNode) => {
+          addNode({
+            id: userNode.id,
+            nodeType: 'user',
+            label: userNode.label,
+            description: 'Accountability lens',
+            repositoryItemId: null,
+            projectLabel: documentNode.projectLabel,
+            teamId: documentNode.teamId,
+            teamLabel: documentNode.teamLabel,
+            workspaceLabel: documentNode.workspaceLabel,
+            documentKind: null,
+            documentState: null,
+            documentVersion: null,
+            userLabel: userNode.userLabel,
+            lastResponsible: userNode.lastResponsible,
+            updatedAt: null,
+            auditLinked: documentNode.auditLinked,
+          });
+          addEdge({
+            id: `${userNode.id}->${documentNode.id}:${userNode.edgeLabel}`,
+            sourceId: userNode.id,
+            targetId: documentNode.id,
+            edgeType: 'belongs-to',
+            label: userNode.edgeLabel,
+          });
         });
         if (documentNode.teamId && documentNode.teamLabel) {
           const teamId = `focus:team:${documentNode.teamId}`;
@@ -1492,6 +1747,34 @@ export function PageB() {
             edgeType: 'belongs-to',
             label: 'belongs to',
           });
+          if (documentNode.lastResponsible) {
+            const actorId = `focus:user:project:${documentNode.lastResponsible}`;
+            addNode({
+              id: actorId,
+              nodeType: 'user',
+              label: documentNode.lastResponsible,
+              description: 'Relevant actor',
+              repositoryItemId: null,
+              projectLabel: documentNode.projectLabel,
+              teamId: documentNode.teamId,
+              teamLabel: documentNode.teamLabel,
+              workspaceLabel: documentNode.workspaceLabel,
+              documentKind: null,
+              documentState: null,
+              documentVersion: null,
+              userLabel: documentNode.userLabel,
+              lastResponsible: documentNode.lastResponsible,
+              updatedAt: null,
+              auditLinked: documentNode.auditLinked,
+            });
+            addEdge({
+              id: `${actorId}->${projectId}:created-in`,
+              sourceId: actorId,
+              targetId: projectId,
+              edgeType: 'created-in',
+              label: 'active in project',
+            });
+          }
         }
         if (documentNode.teamId && documentNode.teamLabel && documentNode.projectLabel) {
           const teamId = `focus:team:${documentNode.teamId}`;
@@ -1521,32 +1804,6 @@ export function PageB() {
             edgeType: 'linked-to-team',
             label: 'supports project',
           });
-        }
-        return;
-      }
-
-      if (knowledgeFocusMode === 'teams') {
-        addNode({ ...documentNode });
-        if (documentNode.teamId && documentNode.teamLabel) {
-          const teamId = `focus:team:${documentNode.teamId}`;
-          addNode({
-            id: teamId,
-            nodeType: 'team',
-            label: documentNode.teamLabel,
-            description: 'Team context',
-            repositoryItemId: null,
-            projectLabel: documentNode.projectLabel,
-            teamId: documentNode.teamId,
-            teamLabel: documentNode.teamLabel,
-            workspaceLabel: null,
-            documentKind: null,
-            documentState: null,
-            documentVersion: null,
-            userLabel: null,
-            lastResponsible: null,
-            updatedAt: null,
-            auditLinked: false,
-          });
           addEdge({
             id: `${documentNode.id}->${teamId}:linked-to-team`,
             sourceId: documentNode.id,
@@ -1554,34 +1811,6 @@ export function PageB() {
             edgeType: 'linked-to-team',
             label: 'linked to team',
           });
-          if (documentNode.workspaceLabel) {
-            const workspaceId = `focus:workspace:${documentNode.workspaceLabel}`;
-            addNode({
-              id: workspaceId,
-              nodeType: 'workspace',
-              label: documentNode.workspaceLabel,
-              description: 'Workspace context',
-              repositoryItemId: null,
-              projectLabel: null,
-              teamId: null,
-              teamLabel: null,
-              workspaceLabel: documentNode.workspaceLabel,
-              documentKind: null,
-              documentState: null,
-              documentVersion: null,
-              userLabel: null,
-              lastResponsible: null,
-              updatedAt: null,
-              auditLinked: false,
-            });
-            addEdge({
-              id: `${teamId}->${workspaceId}:linked-to-workspace`,
-              sourceId: teamId,
-              targetId: workspaceId,
-              edgeType: 'linked-to-workspace',
-              label: 'operates in',
-            });
-          }
         }
         return;
       }
@@ -1618,6 +1847,34 @@ export function PageB() {
           edgeType: 'belongs-to',
           label: 'stored in',
         });
+        if (documentNode.projectLabel) {
+          const projectId = `focus:project:${documentNode.projectLabel}`;
+          addNode({
+            id: projectId,
+            nodeType: 'project',
+            label: documentNode.projectLabel,
+            description: 'Project context',
+            repositoryItemId: null,
+            projectLabel: documentNode.projectLabel,
+            teamId: null,
+            teamLabel: null,
+            workspaceLabel: null,
+            documentKind: null,
+            documentState: null,
+            documentVersion: null,
+            userLabel: null,
+            lastResponsible: null,
+            updatedAt: null,
+            auditLinked: false,
+          });
+          addEdge({
+            id: `${folderId}->${projectId}:belongs-to`,
+            sourceId: folderId,
+            targetId: projectId,
+            edgeType: 'belongs-to',
+            label: 'belongs to',
+          });
+        }
         return;
       }
 
@@ -1628,6 +1885,14 @@ export function PageB() {
           id: savedFileId,
           nodeType: 'saved-file',
           description: 'Persisted saved file',
+        });
+        addNode({ ...documentNode });
+        addEdge({
+          id: `${savedFileId}->${documentNode.id}:created-in`,
+          sourceId: savedFileId,
+          targetId: documentNode.id,
+          edgeType: 'created-in',
+          label: 'materializes as',
         });
         if (documentNode.projectLabel) {
           const projectId = `focus:project:${documentNode.projectLabel}`;
@@ -1657,18 +1922,18 @@ export function PageB() {
             label: 'belongs to',
           });
         }
-        if (documentNode.workspaceLabel) {
-          const workspaceId = `focus:workspace:${documentNode.workspaceLabel}`;
+        if (documentNode.teamId && documentNode.teamLabel) {
+          const teamId = `focus:team:${documentNode.teamId}`;
           addNode({
-            id: workspaceId,
-            nodeType: 'workspace',
-            label: documentNode.workspaceLabel,
-            description: 'Workspace context',
+            id: teamId,
+            nodeType: 'team',
+            label: documentNode.teamLabel,
+            description: 'Team context',
             repositoryItemId: null,
-            projectLabel: null,
-            teamId: null,
-            teamLabel: null,
-            workspaceLabel: documentNode.workspaceLabel,
+            projectLabel: documentNode.projectLabel,
+            teamId: documentNode.teamId,
+            teamLabel: documentNode.teamLabel,
+            workspaceLabel: null,
             documentKind: null,
             documentState: null,
             documentVersion: null,
@@ -1678,44 +1943,11 @@ export function PageB() {
             auditLinked: false,
           });
           addEdge({
-            id: `${savedFileId}->${workspaceId}:linked-to-workspace`,
+            id: `${savedFileId}->${teamId}:linked-to-team`,
             sourceId: savedFileId,
-            targetId: workspaceId,
-            edgeType: 'linked-to-workspace',
-            label: 'linked to workspace',
-          });
-        }
-        return;
-      }
-
-      if (knowledgeFocusMode === 'workspaces') {
-        addNode({ ...documentNode });
-        if (documentNode.workspaceLabel) {
-          const workspaceId = `focus:workspace:${documentNode.workspaceLabel}`;
-          addNode({
-            id: workspaceId,
-            nodeType: 'workspace',
-            label: documentNode.workspaceLabel,
-            description: 'Workspace context',
-            repositoryItemId: null,
-            projectLabel: null,
-            teamId: null,
-            teamLabel: null,
-            workspaceLabel: documentNode.workspaceLabel,
-            documentKind: null,
-            documentState: null,
-            documentVersion: null,
-            userLabel: null,
-            lastResponsible: null,
-            updatedAt: null,
-            auditLinked: false,
-          });
-          addEdge({
-            id: `${documentNode.id}->${workspaceId}:created-in`,
-            sourceId: documentNode.id,
-            targetId: workspaceId,
-            edgeType: 'created-in',
-            label: 'created in',
+            targetId: teamId,
+            edgeType: 'linked-to-team',
+            label: 'linked to team',
           });
         }
         return;
@@ -1800,16 +2032,62 @@ export function PageB() {
     knowledgeGraph.nodes.find((node) => node.nodeType === 'document' || node.nodeType === 'saved-file') ??
     knowledgeGraph.nodes[0] ??
     null;
-  const openFileRepositoryItem =
-    (openFileId
-      ? documentationModel.repositoryItems.find(
-          (item) => item.itemType === 'file' && item.relatedFileId === openFileId,
-        ) ?? null
-      : null);
-  const openFileInvestigationThread =
-    (openFileId
-      ? investigateThreads.find((thread) => thread.relatedFileId === openFileId) ?? null
-      : null);
+  const selectedKnowledgeRelations = useMemo(() => {
+    if (!selectedKnowledgeNode) {
+      return [];
+    }
+
+    return knowledgeGraph.edges
+      .filter(
+        (edge) =>
+          edge.sourceId === selectedKnowledgeNode.id || edge.targetId === selectedKnowledgeNode.id,
+      )
+      .map((edge) => {
+        const relatedNode =
+          knowledgeGraph.nodes.find((node) =>
+            node.id === (edge.sourceId === selectedKnowledgeNode.id ? edge.targetId : edge.sourceId),
+          ) ?? null;
+        return {
+          edge,
+          relatedNode,
+        };
+      })
+      .filter((entry) => entry.relatedNode !== null)
+      .slice(0, 6);
+  }, [knowledgeGraph.edges, knowledgeGraph.nodes, selectedKnowledgeNode]);
+  const knowledgeContextSummary = useMemo(() => {
+    const auditLinkedDocuments = knowledgeFilteredDocumentNodes.filter((node) => node.auditLinked).length;
+    const relatedActors = new Set(
+      knowledgeFilteredDocumentNodes
+        .flatMap((node) => [node.userLabel, node.lastResponsible])
+        .filter((value): value is string => Boolean(value)),
+    ).size;
+    return {
+      documentCount: knowledgeFilteredDocumentNodes.length,
+      nodeCount: knowledgeGraph.nodes.length,
+      edgeCount: knowledgeGraph.edges.length,
+      auditLinkedDocuments,
+      relatedActors,
+    };
+  }, [knowledgeFilteredDocumentNodes, knowledgeGraph.edges.length, knowledgeGraph.nodes.length]);
+  const knowledgeModeSummary = useMemo(() => {
+    if (knowledgeFocusMode === 'documents') {
+      return 'Documents shows documentary pieces connected through their team and project context.';
+    }
+    if (knowledgeFocusMode === 'users') {
+      return 'Users shows owners and responsible actors linked to the documents they touched.';
+    }
+    if (knowledgeFocusMode === 'projects') {
+      return 'Projects shows projects as the main container, with teams, documents, and relevant actors around them.';
+    }
+    if (knowledgeFocusMode === 'folders') {
+      return 'Folders shows the structural storage layer and the documents organized inside it.';
+    }
+    if (knowledgeFocusMode === 'saved-files') {
+      return 'Saved Files shows persisted pieces and how they materialize into documents, teams, and projects.';
+    }
+    return 'Document Types shows each documentary class and the concrete pieces linked to that type.';
+  }, [knowledgeFocusMode]);
 
   useEffect(() => {
     if (!knowledgeProjectFilter) {
@@ -1848,9 +2126,6 @@ export function PageB() {
     const params = new URLSearchParams(window.location.search);
     const itemIdFromLocation = params.get('doc_item');
     const viewFromLocation = params.get('doc_view');
-    const shouldOpenFile = params.get('doc_open') === 'file';
-    const shouldFocusDetail = params.get('doc_focus') === 'detail';
-
     if (
       viewFromLocation &&
       (viewFromLocation === 'repository' ||
@@ -1862,17 +2137,8 @@ export function PageB() {
     ) {
       setActiveView(viewFromLocation);
     }
-    setRepositoryFocusMode(shouldFocusDetail ? 'detail' : 'list');
-
     if (itemIdFromLocation && documentationModel.repositoryItems.some((item) => item.id === itemIdFromLocation)) {
       setSelectedRepositoryItemId(itemIdFromLocation);
-      const locationItem = documentationModel.repositoryItems.find((item) => item.id === itemIdFromLocation) ?? null;
-      if (shouldOpenFile && locationItem?.relatedFileId) {
-        setOpenFileId(locationItem.relatedFileId);
-      }
-      if (shouldFocusDetail && !shouldOpenFile) {
-        setShowRepositoryDetailModal(true);
-      }
       return;
     }
 
@@ -1887,6 +2153,10 @@ export function PageB() {
   ]);
 
   useEffect(() => {
+    if (activeView !== 'repository') {
+      return;
+    }
+
     if (!selectedRepositoryItemId) {
       if (repositoryFilteredItems[0]) {
         setSelectedRepositoryItemId(repositoryFilteredItems[0].id);
@@ -1900,7 +2170,7 @@ export function PageB() {
     ) {
       setSelectedRepositoryItemId(repositoryFilteredItems[0].id);
     }
-  }, [repositoryFilteredItems, selectedRepositoryItemId]);
+  }, [activeView, repositoryFilteredItems, selectedRepositoryItemId]);
 
   const handleCreateProject = () => {
     if (!newProjectName.trim()) {
@@ -1921,117 +2191,336 @@ export function PageB() {
 
   const focusRepositoryDocument = (
     repositoryItemId: string,
-    options?: {
-      openFile?: boolean;
+    _options?: {
+      focusDetail?: boolean;
     },
   ) => {
     const canonicalItem =
-      documentationModel.repositoryItems.find(
-        (candidate) =>
-          candidate.id === repositoryItemId &&
-          (candidate.itemType === 'file' || candidate.itemType === 'saved-object'),
-      ) ?? null;
+      documentationModel.repositoryItems.find((candidate) => candidate.id === repositoryItemId) ?? null;
     if (!canonicalItem) {
       return;
     }
-
-    setActiveView('repository');
-    setRepositoryQuery('');
-    setRepositoryProjectFilter('all');
-    setRepositoryTeamFilter('all');
-    setRepositoryTypeFilter('all');
-    setRepositoryStatusFilter('all');
-    setRepositoryDateFilter('');
     setSelectedRepositoryItemId(canonicalItem.id);
-    setRepositoryFocusMode('list');
-    setShowRepositoryDetailModal(false);
-
-    if (
-      options?.openFile &&
-      canonicalItem.relatedFileId &&
-      state.savedFiles.some((file) => file.id === canonicalItem.relatedFileId)
-    ) {
-      setOpenFileId(canonicalItem.relatedFileId);
-      return;
-    }
-
-    if (!options?.openFile) {
-      setOpenFileId(null);
-    }
   };
 
-  const buildRepositoryItemHref = (
-    itemId: string,
-    options?: { view?: DocumentationViewMode; openFile?: boolean; focusDetail?: boolean },
-  ) => {
+  const buildDocumentPageHref = (itemId: string) => {
     const item = documentationModel.repositoryItems.find((candidate) => candidate.id === itemId) ?? null;
     if (!item) return '#';
 
     const url = new URL(window.location.href);
-    url.searchParams.set('page', 'B');
-    url.searchParams.set('doc_view', options?.view ?? 'repository');
+    url.search = '';
+    url.searchParams.set('doc_page', 'document');
     url.searchParams.set('doc_item', item.id);
-    const shouldOpenFile = options?.openFile ?? Boolean(item.relatedFileId);
-    const shouldFocusDetail = options?.focusDetail ?? !shouldOpenFile;
-    if (shouldOpenFile && item.relatedFileId) {
-      url.searchParams.set('doc_open', 'file');
-      url.searchParams.delete('doc_focus');
-    } else if (shouldFocusDetail) {
-      url.searchParams.delete('doc_open');
-      url.searchParams.set('doc_focus', 'detail');
-    } else {
-      url.searchParams.delete('doc_open');
-      url.searchParams.delete('doc_focus');
-    }
-
     return url.toString();
   };
 
-  const openRepositoryDocumentOverlay = (itemId: string, relatedFileId?: string | null) => {
-    const item = documentationModel.repositoryItems.find((candidate) => candidate.id === itemId) ?? null;
-    if (!item) return;
+  const openParallelHref = (href: string) => {
+    const launchedWindow = window.open(href, '_blank', 'noopener,noreferrer');
+    if (!launchedWindow) {
+      setToast('Could not open the requested page.');
+    }
+  };
 
-    setSelectedRepositoryItemId(item.id);
-
-    if (
-      relatedFileId &&
-      state.savedFiles.some((file) => file.id === relatedFileId)
-    ) {
-      setShowRepositoryDetailModal(false);
-      setOpenFileId(relatedFileId);
+  const openDocumentPage = (itemId: string) => {
+    const href = buildDocumentPageHref(itemId);
+    if (href === '#') {
+      setToast('Requested document was not found.');
       return;
     }
+    openParallelHref(href);
+  };
 
-    setOpenFileId(null);
-    setShowRepositoryDetailModal(true);
+  const buildAuditLogHref = (item: DocumentationRepositoryItem) => {
+    const auditEventId = item.auditEventIds[item.auditEventIds.length - 1] ?? null;
+    if (!auditEventId) return '#';
+
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('page', 'C');
+    url.searchParams.set('audit_event', auditEventId);
+    return url.toString();
+  };
+
+  const buildResumeWorkHref = (item: DocumentationRepositoryItem) => {
+    if (!item.relatedObjectId) return '#';
+    const savedObject = state.savedObjects.find((candidate) => candidate.id === item.relatedObjectId) ?? null;
+    const versionReference = getCheckpointVersionReference(savedObject);
+    if (!versionReference) return '#';
+
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('page', 'H');
+    url.searchParams.set('version_source', versionReference.source);
+    url.searchParams.set('version_id', versionReference.versionId);
+    url.searchParams.set('version_thread', versionReference.threadId);
+    if (versionReference.source === 'main' && versionReference.agent) {
+      url.searchParams.set('version_agent', versionReference.agent);
+    }
+    if (versionReference.source === 'main' && versionReference.panelScope) {
+      url.searchParams.set('version_panel', versionReference.panelScope);
+    }
+    if (versionReference.source === 'team' && versionReference.teamId) {
+      url.searchParams.set('version_team', versionReference.teamId);
+    }
+    return url.toString();
+  };
+
+  const getRepositoryActions = (
+    item: DocumentationRepositoryItem,
+    options?: { includeDetail?: boolean },
+  ): RepositoryAction[] => {
+    const actions: RepositoryAction[] = [];
+
+    if (options?.includeDetail ?? true) {
+      actions.push({
+        key: 'detail',
+        label: 'View Details',
+        onClick: () => focusRepositoryDocument(item.id, { focusDetail: true }),
+      });
+    }
+
+    if (item.itemType === 'file') {
+      actions.push({
+        key: 'document',
+        label: 'Open Document',
+        onClick: () => openDocumentPage(item.id),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.objectType === 'source-document-reference' || item.objectType === 'derived-document') {
+      actions.push({
+        key: 'document',
+        label: 'Open Document',
+        onClick: () => openDocumentPage(item.id),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.objectType === 'checkpoint') {
+      const resumeHref = buildResumeWorkHref(item);
+      actions.push({
+        key: 'resume',
+        label: 'Resume Work',
+        href: resumeHref === '#' ? undefined : resumeHref,
+        onClick: resumeHref === '#' ? undefined : () => window.location.assign(resumeHref),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.objectType === 'saved-selection') {
+      actions.push({
+        key: 'selection',
+        label: 'Open Selection',
+        onClick: () => openDocumentPage(item.id),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.objectType === 'handoff-package') {
+      actions.push({
+        key: 'handoff',
+        label: 'Open Handoff',
+        onClick: () => openDocumentPage(item.id),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.objectType === 'session-backup') {
+      actions.push({
+        key: 'backup',
+        label: 'Open Backup',
+        onClick: () => openDocumentPage(item.id),
+        primary: true,
+      });
+      return actions;
+    }
+
+    if (item.auditEventIds.length > 0) {
+      const auditHref = buildAuditLogHref(item);
+      actions.push({
+        key: 'audit',
+        label: 'View in Audit Log',
+        href: auditHref === '#' ? undefined : auditHref,
+        onClick: auditHref === '#' ? undefined : () => openParallelHref(auditHref),
+        primary: true,
+      });
+    }
+
+    return actions;
+  };
+
+  const getAuditEntryActions = (entry: DocumentationAuditEntry): RepositoryAction[] => {
+    const repositoryItem =
+      documentationModel.repositoryItems.find((item) => item.id === entry.repositoryItemId) ?? null;
+    if (!repositoryItem) {
+      return [
+        {
+          key: 'audit-detail',
+          label: 'View Details',
+          onClick: () => focusRepositoryDocument(entry.repositoryItemId, { focusDetail: true }),
+        },
+      ];
+    }
+
+    const actions = getRepositoryActions(repositoryItem);
+    if (!actions.some((action) => action.key === 'audit')) {
+      const auditHref = buildAuditLogHref(repositoryItem);
+      if (auditHref !== '#') {
+        actions.push({
+          key: 'audit',
+          label: 'View in Audit Log',
+          onClick: () => openParallelHref(auditHref),
+        });
+      }
+    }
+    return actions;
+  };
+
+  const getInvestigateThreadActions = (thread: InvestigationThread): RepositoryAction[] => {
+    const repositoryItem =
+      documentationModel.repositoryItems.find((item) => item.id === thread.repositoryItemId) ?? null;
+    if (!repositoryItem) {
+      return [];
+    }
+
+    const actions = getRepositoryActions(repositoryItem);
+    if (!actions.some((action) => action.key === 'audit')) {
+      const auditHref = buildAuditLogHref(repositoryItem);
+      if (auditHref !== '#') {
+        actions.push({
+          key: 'audit',
+          label: 'View in Audit Log',
+          onClick: () => openParallelHref(auditHref),
+        });
+      }
+    }
+    return actions;
+  };
+
+  const getKnowledgeNodeActions = (node: KnowledgeGraphNode | null): RepositoryAction[] => {
+    if (!node?.repositoryItemId) {
+      return [];
+    }
+
+    const repositoryItem =
+      documentationModel.repositoryItems.find((item) => item.id === node.repositoryItemId) ?? null;
+    if (!repositoryItem) {
+      return [];
+    }
+
+    const actions = getRepositoryActions(repositoryItem);
+    if (!actions.some((action) => action.key === 'audit')) {
+      const auditHref = buildAuditLogHref(repositoryItem);
+      if (auditHref !== '#') {
+        actions.push({
+          key: 'audit',
+          label: 'View in Audit Log',
+          onClick: () => openParallelHref(auditHref),
+        });
+      }
+    }
+    return actions;
   };
 
   const documentationViewContent =
     activeView === 'structure' ? (
       <DocumentationMirrorTree model={documentationModel} />
     ) : activeView === 'repository' ? (
-      <div className="flex h-full min-h-0 flex-col gap-3">
-        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-            <span>Root: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.root.path}</span></span>
-            <span>Teams: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.teamFolders.length}</span></span>
-            <span>Agent Units: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.agentUnits.length}</span></span>
-            <span>Indexed Records: <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.indexEntries.length}</span></span>
-          </div>
-        </div>
+      <div className="flex h-full min-h-0 flex-col gap-2.5">
+        <div className="ui-surface-subtle rounded-[16px] px-2.5 py-1.5">
+          <div className="grid gap-1.5">
+            <div className="grid gap-2 xl:grid-cols-[minmax(330px,2.05fr)_minmax(250px,1.65fr)_repeat(4,minmax(118px,0.76fr))]">
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Repository search
+                </div>
+                <div className="mt-0.5 text-[12px] font-semibold tracking-[-0.02em] text-neutral-900">
+                  Find documents and operational objects from the shared documentary base.
+                </div>
+                <div className="mt-0.5 text-[10px] leading-[1.3] text-neutral-600">
+                  Search by name, team, origin, agent, or basic type without switching to the structural tree.
+                </div>
+                <label className="mt-1.5 grid gap-1">
+                  <span className="ui-label">Search repository</span>
+                  <input
+                    className="ui-input text-xs"
+                    value={repositoryQuery}
+                    onChange={(event) => setRepositoryQuery(event.target.value)}
+                    placeholder="Search by name, team, owner, type..."
+                  />
+                </label>
+              </div>
 
-        <div className="ui-surface-subtle rounded-[18px] px-3 py-2">
-          <div className="grid gap-x-2 gap-y-2 xl:grid-cols-[minmax(220px,1.45fr)_repeat(5,minmax(118px,0.72fr))_auto] xl:items-end">
-              <label className="grid gap-1">
-                <span className="ui-label">Search repository</span>
-                <input
-                  className="ui-input text-xs"
-                  value={repositoryQuery}
-                  onChange={(event) => setRepositoryQuery(event.target.value)}
-                  placeholder="Search by name, team, owner, type..."
-                />
-              </label>
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Root context
+                </div>
+                <div className="mt-0.5 truncate text-[12px] font-semibold tracking-[-0.02em] text-neutral-900" title={documentationModel.root.path}>
+                  {documentationModel.root.path}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                  <span>Teams <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.teamFolders.length}</span></span>
+                  <span>Agent Units <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.agentUnits.length}</span></span>
+                  <span>Indexed Records <span className="text-neutral-800 normal-case tracking-normal">{documentationModel.indexEntries.length}</span></span>
+                </div>
+              </div>
 
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Results
+                </div>
+                <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-neutral-900">
+                  {repositoryResultSummary.total}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-[1.28] text-neutral-600">
+                  items currently visible in Repository View
+                </div>
+              </div>
+
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Saved Objects
+                </div>
+                <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-neutral-900">
+                  {repositoryResultSummary.savedObjects}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-[1.28] text-neutral-600">
+                  checkpoints, selections, handoffs, and related operational objects
+                </div>
+              </div>
+
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Under Review
+                </div>
+                <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-neutral-900">
+                  {repositoryResultSummary.underReview}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-[1.28] text-neutral-600">
+                  records that still need review or controlled follow-through
+                </div>
+              </div>
+
+              <div className="ui-surface rounded-[14px] px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                  Controlled
+                </div>
+                <div className="mt-0.5 text-[18px] font-semibold tracking-[-0.04em] text-neutral-900">
+                  {repositoryResultSummary.controlled}
+                </div>
+                <div className="mt-0.5 text-[10px] leading-[1.28] text-neutral-600">
+                  locked or controlled documentary states visible in the current result set
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-x-2 gap-y-1 xl:grid-cols-[repeat(5,minmax(108px,0.92fr))_auto] xl:items-end">
               <label className="grid gap-1">
                 <span className="ui-label">Project</span>
                 <select
@@ -2088,11 +2577,13 @@ export function PageB() {
                   onChange={(event) => setRepositoryStatusFilter(event.target.value)}
                 >
                   <option value="all">All states</option>
+                  <option value="Active">Active</option>
                   <option value="Draft">Draft</option>
                   <option value="In Progress">In Progress</option>
                   <option value="Under Review">Under Review</option>
                   <option value="Approved">Approved</option>
                   <option value="Locked">Locked</option>
+                  <option value="Archived">Archived</option>
                 </select>
               </label>
 
@@ -2106,37 +2597,41 @@ export function PageB() {
                 />
               </label>
               <div className="flex items-end justify-end">
-              <button
-                className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
-                onClick={() => {
-                  setRepositoryQuery('');
-                  setRepositoryProjectFilter('all');
-                  setRepositoryTeamFilter('all');
-                  setRepositoryTypeFilter('all');
-                  setRepositoryStatusFilter('all');
-                  setRepositoryDateFilter('');
-                }}
-              >
-                Reset filters
-              </button>
+                <button
+                  className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
+                  onClick={() => {
+                    setRepositoryQuery('');
+                    setRepositoryProjectFilter('all');
+                    setRepositoryTeamFilter('all');
+                    setRepositoryTypeFilter('all');
+                    setRepositoryStatusFilter('all');
+                    setRepositoryDateFilter('');
+                  }}
+                >
+                  Reset filters
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="ui-surface min-h-0 flex flex-1 flex-col overflow-hidden rounded-[22px] px-4 py-3 sm:px-5">
-          <div className="mb-3 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-            <span className="text-neutral-800 normal-case tracking-normal">
-              {repositoryFilteredItems.length} repository items available from the shared documentary base.
-            </span>
+        <div className="ui-surface min-h-0 flex flex-1 flex-col overflow-hidden rounded-[22px] px-4 py-2.5 sm:px-5">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                Repository Results
+              </div>
+              <div className="mt-0.5 text-[13px] leading-[1.3] text-neutral-700">
+                <span className="font-semibold text-neutral-900">{repositoryFilteredItems.length}</span>{' '}
+                items available from the shared documentary base.
+              </div>
+            </div>
+            <div className="text-[10px] leading-[1.3] text-neutral-600">
+              Repository View is the fast access surface for operating documentation without depending on the tree.
+            </div>
           </div>
-          <div
-            className={
-              repositoryFocusMode === 'detail'
-                ? 'grid min-h-0 flex-1 gap-4'
-                : 'grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] xl:items-stretch'
-            }
-          >
-              {repositoryFocusMode === 'detail' && selectedRepositoryItem ? (
+          <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-stretch">
+              {false && selectedRepositoryItem ? (
                 <div className="ui-surface rounded-[20px] px-4 py-4">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                     Detail Focus
@@ -2146,12 +2641,16 @@ export function PageB() {
                   </div>
                 </div>
               ) : (
-                <div className="grid min-h-0 content-start gap-3 overflow-y-auto pr-1">
+                <div className="grid min-h-0 content-start gap-2.5 overflow-y-auto pr-1">
                   {repositoryFilteredItems.map((item) => (
                     <RepositoryItemCard
                       key={item.id}
-                      href={buildRepositoryItemHref(item.id)}
                       itemType={item.itemType}
+                      typeLabel={getRepositoryItemTypeLabel(item)}
+                      teamLabel={item.teamLabel}
+                      ownerLabel={item.ownerLabel}
+                      sourcePanelLabel={item.sourcePanelLabel ?? null}
+                      updatedAt={item.updatedAt}
                       title={item.title}
                       meta={`${item.objectType ?? item.itemType} · ${item.teamLabel} · ${item.sourcePanelLabel ?? item.ownerLabel ?? 'system ownership'}`}
                       secondary={`${item.recordClass} · updated ${item.updatedAt?.slice(0, 10) ?? 'n/a'}${item.provenanceSummary ? ` · ${item.provenanceSummary}` : ''}`}
@@ -2159,9 +2658,10 @@ export function PageB() {
                       documentState={item.documentState}
                       documentVersion={item.documentVersion}
                       lastResponsible={item.lastResponsible}
+                      readiness={getDocumentReadinessFields(item)}
                       selected={selectedRepositoryItem?.id === item.id}
                       onSelect={() => setSelectedRepositoryItemId(item.id)}
-                      onOpen={item.relatedFileId ? () => setOpenFileId(item.relatedFileId ?? null) : null}
+                      actions={getRepositoryActions(item)}
                     />
                   ))}
 
@@ -2175,14 +2675,13 @@ export function PageB() {
 
               <div className="ui-surface-subtle rounded-[20px] px-4 py-4 xl:sticky xl:top-0">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                  Document Detail
+                  Documentary Detail
                 </div>
 
                 {selectedRepositoryItem ? (
                   <RepositoryDetailPanel
                     item={selectedRepositoryItem}
-                    href={buildRepositoryItemHref(selectedRepositoryItem.id)}
-                    onOpenFile={() => setOpenFileId(selectedRepositoryItem.relatedFileId ?? null)}
+                    actions={getRepositoryActions(selectedRepositoryItem, { includeDetail: false })}
                   />
                 ) : (
                   <div className="mt-3 text-sm text-neutral-600">
@@ -2221,7 +2720,7 @@ export function PageB() {
               </div>
             )) : (
               <>
-                <div className="grid gap-x-3 gap-y-2 xl:grid-cols-[repeat(4,minmax(150px,1fr))_auto] xl:items-end">
+                <div className="grid gap-x-3 gap-y-2 xl:grid-cols-[repeat(6,minmax(130px,1fr))_auto] xl:items-end">
                   <label className="grid gap-1">
                     <span className="ui-label">Document state</span>
                     <select
@@ -2255,7 +2754,7 @@ export function PageB() {
                   </label>
 
                   <label className="grid gap-1">
-                    <span className="ui-label">Responsible</span>
+                    <span className="ui-label">Actor</span>
                     <select
                       className="ui-input text-xs"
                       value={auditResponsibleFilter}
@@ -2265,6 +2764,38 @@ export function PageB() {
                       {auditResponsibleOptions.map((responsible) => (
                         <option key={responsible} value={responsible}>
                           {responsible}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1">
+                    <span className="ui-label">Team</span>
+                    <select
+                      className="ui-input text-xs"
+                      value={auditTeamFilter}
+                      onChange={(event) => setAuditTeamFilter(event.target.value)}
+                    >
+                      <option value="all">All teams</option>
+                      {auditTeamOptions.map((team) => (
+                        <option key={team} value={team}>
+                          {team}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1">
+                    <span className="ui-label">Document type</span>
+                    <select
+                      className="ui-input text-xs"
+                      value={auditTypeFilter}
+                      onChange={(event) => setAuditTypeFilter(event.target.value)}
+                    >
+                      <option value="all">All document types</option>
+                      {auditTypeOptions.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
                         </option>
                       ))}
                     </select>
@@ -2286,6 +2817,8 @@ export function PageB() {
                         setAuditStateFilter('all');
                         setAuditEventFilter('all');
                         setAuditResponsibleFilter('all');
+                        setAuditTeamFilter('all');
+                        setAuditTypeFilter('all');
                         setAuditDateFilter('');
                       }}
                     >
@@ -2303,13 +2836,16 @@ export function PageB() {
             <span className="text-neutral-800 normal-case tracking-normal">
               {auditFilteredEntries.length} audit records available from the shared documentary base.
             </span>
+            <span className="text-neutral-800 normal-case tracking-normal">
+              Trace each document through event, actor, and linked audit context.
+            </span>
           </div>
           <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-1">
                 {auditFilteredEntries.map((entry) => (
                   <AuditEntryReferenceRow
                     key={entry.id}
                     entry={entry}
-                    onOpen={() => openRepositoryDocumentOverlay(entry.repositoryItemId, entry.relatedFileId)}
+                    actions={getAuditEntryActions(entry)}
                   />
                 ))}
 
@@ -2329,6 +2865,60 @@ export function PageB() {
             <span>Timeline Groups: <span className="text-neutral-800 normal-case tracking-normal">{investigateTimelineGroups.length}</span></span>
             <span>Versioned Docs: <span className="text-neutral-800 normal-case tracking-normal">{investigateThreads.filter((thread) => thread.documentVersion && thread.documentVersion !== 'v1').length}</span></span>
             <span>Review Paths: <span className="text-neutral-800 normal-case tracking-normal">{investigateThreads.filter((thread) => thread.documentState === 'Under Review').length}</span></span>
+          </div>
+        </div>
+
+        <div className="ui-surface rounded-[22px] px-4 py-3 sm:px-5">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)]">
+            <div className="grid gap-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Investigation focus
+              </div>
+              <div className="text-[13px] font-semibold tracking-[-0.02em] text-neutral-900">
+                Study a documentary line by theme, actor, project, or trace context.
+              </div>
+              <label className="grid gap-1">
+                <span className="ui-label">Theme or context</span>
+                <input
+                  className="ui-input text-xs"
+                  type="text"
+                  value={investigateThemeQuery}
+                  placeholder="Search a topic, actor, project, document, or linked trace..."
+                  onChange={(event) => setInvestigateThemeQuery(event.target.value)}
+                />
+              </label>
+              <div className="text-[11px] leading-[1.5] text-neutral-600">
+                Use this view to reconstruct an issue across related documents, not just to find one item.
+              </div>
+            </div>
+
+            <div className="ui-surface-subtle rounded-[18px] px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                Investigation context
+              </div>
+              <div className="mt-2 grid gap-2 text-xs text-neutral-700 sm:grid-cols-2">
+                <DetailField
+                  label="Focus"
+                  value={investigateContextSummary.query || 'All documentary lines'}
+                />
+                <DetailField
+                  label="Related actors"
+                  value={String(investigateContextSummary.actorCount)}
+                />
+                <DetailField
+                  label="Related pieces"
+                  value={String(investigateContextSummary.threadCount)}
+                />
+                <DetailField
+                  label="Timeline span"
+                  value={
+                    investigateContextSummary.firstSeen || investigateContextSummary.lastSeen
+                      ? `${investigateContextSummary.firstSeen ?? 'n/a'} to ${investigateContextSummary.lastSeen ?? 'n/a'}`
+                      : 'No timeline available'
+                  }
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2411,6 +3001,7 @@ export function PageB() {
                 <button
                   className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
                   onClick={() => {
+                    setInvestigateThemeQuery('');
                     setInvestigateProjectFilter('all');
                     setInvestigateTeamFilter('all');
                     setInvestigateWorkspaceFilter('all');
@@ -2438,13 +3029,7 @@ export function PageB() {
                       <InvestigationThreadCard
                         key={thread.repositoryItemId}
                         thread={thread}
-                        onOpenDocument={() => focusRepositoryDocument(thread.repositoryItemId)}
-                        onOpenFile={
-                          thread.relatedFileId &&
-                          state.savedFiles.some((file) => file.id === thread.relatedFileId)
-                            ? () => focusRepositoryDocument(thread.repositoryItemId, { openFile: true })
-                            : undefined
-                        }
+                        actions={getInvestigateThreadActions(thread)}
                       />
                     ))}
                   </div>
@@ -2462,10 +3047,14 @@ export function PageB() {
     ) : (
       <div className="grid h-full min-h-0 gap-3">
         <div className="ui-surface h-full overflow-hidden rounded-[22px] px-4 py-4 sm:px-5">
-          <div className="mb-2 grid h-full min-h-0 gap-4 xl:grid-cols-[270px_minmax(0,1fr)] xl:items-start">
-            <div className="grid gap-2 rounded-[20px] border border-neutral-200 bg-white/70 px-3 py-3 xl:col-start-1 xl:row-start-1">
+          <div className="mb-2 grid h-full min-h-0 gap-4 xl:grid-cols-[280px_minmax(0,1fr)] xl:items-stretch">
+            <div className="flex min-h-0 flex-col gap-3 xl:max-h-[740px] xl:overflow-y-auto xl:pr-1">
+            <div className="grid gap-2 rounded-[20px] border border-neutral-200 bg-white/70 px-3 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
                 Graph Focus Modes
+              </div>
+              <div className="text-[11px] leading-[1.45] text-neutral-600">
+                {knowledgeModeSummary}
               </div>
               <div className="grid gap-2">
                 {KNOWLEDGE_FOCUS_MODE_OPTIONS.map((mode) => (
@@ -2481,7 +3070,7 @@ export function PageB() {
                 ))}
               </div>
             </div>
-            <div className="grid gap-3 rounded-[20px] border border-neutral-200 bg-white/70 px-3 py-3 xl:col-start-1 xl:row-start-2">
+            <div className="grid gap-3 rounded-[20px] border border-neutral-200 bg-white/70 px-3 py-3">
               <label className="grid gap-1">
                 <span className="ui-label">Project</span>
                 <select
@@ -2546,6 +3135,32 @@ export function PageB() {
                 </select>
               </label>
 
+              <label className="grid gap-1">
+                <span className="ui-label">Actor / responsible</span>
+                <select
+                  className="ui-input text-xs"
+                  value={knowledgeActorFilter}
+                  onChange={(event) => setKnowledgeActorFilter(event.target.value)}
+                >
+                  <option value="all">All actors</option>
+                  {knowledgeActorOptions.map((actor) => (
+                    <option key={actor} value={actor}>
+                      {actor}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-1">
+                <span className="ui-label">Updated</span>
+                <input
+                  className="ui-input text-xs"
+                  type="date"
+                  value={knowledgeDateFilter}
+                  onChange={(event) => setKnowledgeDateFilter(event.target.value)}
+                />
+              </label>
+
               <button
                 className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
                 onClick={() => {
@@ -2554,19 +3169,23 @@ export function PageB() {
                   setKnowledgeTeamFilter('all');
                   setKnowledgeWorkspaceFilter('all');
                   setKnowledgeTypeFilter('all');
+                  setKnowledgeActorFilter('all');
+                  setKnowledgeDateFilter('');
                 }}
               >
                 Reset map focus
               </button>
             </div>
 
-            <div className="rounded-[16px] border border-neutral-200 bg-white/75 px-3 py-2 xl:col-start-1 xl:row-start-3">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+            <div className="rounded-[16px] border border-neutral-200 bg-white/75 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
                 {knowledgeFilteredDocumentNodes.length} docs · {knowledgeGraph.nodes.length} nodes · {knowledgeGraph.edges.length} relations
               </div>
             </div>
 
-            <div className="grid min-w-0 min-h-0 gap-2 xl:col-start-2 xl:row-start-1 xl:row-span-3">
+            </div>
+
+            <div className="grid min-w-0 min-h-0">
               <KnowledgeMapCanvas
                 nodes={knowledgeGraph.nodes}
                 edges={knowledgeGraph.edges}
@@ -2575,15 +3194,99 @@ export function PageB() {
                 onSelectNode={setSelectedKnowledgeNodeId}
                 onOpenDocument={
                   selectedKnowledgeNode?.repositoryItemId
-                    ? () => focusRepositoryDocument(selectedKnowledgeNode.repositoryItemId as string)
+                    ? () => focusRepositoryDocument(selectedKnowledgeNode.repositoryItemId as string, { focusDetail: true })
                     : undefined
                 }
                 onOpenFile={
                   selectedKnowledgeNode?.repositoryItemId && selectedKnowledgeNode.relatedFileId
-                    ? () => focusRepositoryDocument(selectedKnowledgeNode.repositoryItemId as string, { openFile: true })
+                    ? () => openDocumentPage(selectedKnowledgeNode.repositoryItemId as string)
                     : undefined
                 }
               />
+              <div className="hidden ui-surface min-h-0 rounded-[20px] px-4 py-3">
+                {selectedKnowledgeNode ? (
+                  <div className="grid gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="grid gap-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                          Selected relation context
+                        </div>
+                        <div className="text-[15px] font-semibold tracking-[-0.02em] text-neutral-900">
+                          {selectedKnowledgeNode.label}
+                        </div>
+                        <div className="text-[11px] leading-[1.45] text-neutral-600">
+                          {[selectedKnowledgeNode.projectLabel, selectedKnowledgeNode.teamLabel, selectedKnowledgeNode.workspaceLabel]
+                            .filter((value): value is string => Boolean(value))
+                            .join(' · ') || selectedKnowledgeNode.description || 'No contextual metadata'}
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-neutral-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                        {selectedKnowledgeNode.nodeType.replace('-', ' ')}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 text-xs text-neutral-700 sm:grid-cols-2 xl:grid-cols-4">
+                      <DetailField label="State" value={selectedKnowledgeNode.documentState ?? 'n/a'} />
+                      <DetailField label="Version" value={selectedKnowledgeNode.documentVersion ?? 'n/a'} />
+                      <DetailField label="User" value={selectedKnowledgeNode.userLabel ?? 'n/a'} />
+                      <DetailField label="Responsible" value={selectedKnowledgeNode.lastResponsible ?? 'n/a'} />
+                    </div>
+
+                    <div className="grid gap-2 rounded-[16px] border border-neutral-200 bg-white/80 px-3 py-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                        Visible linked context
+                      </div>
+                      {selectedKnowledgeRelations.length > 0 ? (
+                        <div className="grid gap-2">
+                          {selectedKnowledgeRelations.map(({ edge, relatedNode }) => (
+                            <div
+                              key={edge.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-neutral-200 bg-white px-3 py-2"
+                            >
+                              <div className="grid gap-0.5">
+                                <div className="text-xs font-semibold text-neutral-900">
+                                  {relatedNode?.label}
+                                </div>
+                                <div className="text-[11px] leading-[1.45] text-neutral-600">
+                                  {edge.label} · {relatedNode?.nodeType.replace('-', ' ')}
+                                </div>
+                              </div>
+                              <button
+                                className="ui-button min-h-7 px-2.5 text-[10px] text-neutral-700"
+                                onClick={() => relatedNode && setSelectedKnowledgeNodeId(relatedNode.id)}
+                              >
+                                Focus node
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-neutral-600">
+                          No linked nodes are visible in the current filtered slice.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {getKnowledgeNodeActions(selectedKnowledgeNode).map((action) => (
+                        <button
+                          key={action.key}
+                          className={`ui-button min-h-8 px-3 text-[11px] ${
+                            action.primary ? 'ui-button-primary text-white' : 'text-neutral-700'
+                          }`}
+                          onClick={action.onClick}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-neutral-600">
+                    Select a node to inspect its documentary relations and open linked pieces.
+                  </div>
+                )}
+              </div>
             </div>
 
             {knowledgeGraph.nodes.length === 0 ? (
@@ -2598,39 +3301,60 @@ export function PageB() {
 
   const documentationContent = (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
-      <div className="px-2 pb-2 pt-2 sm:px-3 sm:pt-3">
-        <div className="ui-surface px-3 py-3 sm:px-4 sm:py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="px-2 pb-1.5 pt-1.5 sm:px-3 sm:pt-2">
+        <div className="ui-surface px-3 py-2 sm:px-4 sm:py-2">
+          <div className="grid gap-2 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1fr)_auto] xl:items-start">
             <div className="min-w-0">
               <div className="text-center text-sm font-semibold tracking-[0.14em] text-neutral-900 sm:text-left">
                 DOCUMENTATION MODE
               </div>
-              <div className="mt-1 text-[11px] text-neutral-500">
+              <div className="mt-0.5 text-[10px] leading-[1.3] text-neutral-500">
                 Multiple production views over one shared documentary base.
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="flex max-w-[320px] flex-col items-start gap-1.5 pt-0.5 text-left">
-                {DOCUMENTATION_HELP_LINKS.map((link) => (
-                  <button
-                    key={link.id}
-                    className="text-[11px] font-normal text-[var(--color-accent-strong)] underline underline-offset-2 transition-colors hover:text-[var(--color-accent)]"
-                    onClick={() => setActiveHelpTopic(link.id)}
-                  >
-                    {link.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col items-end leading-none">
+
+            <div className="flex flex-wrap items-start justify-center self-center gap-x-3 gap-y-2 xl:-translate-x-6 xl:pt-0.5">
+              {documentationModel.views.map((view) => {
+                const isActive = view.mode === activeView;
+                const helpLink =
+                  DOCUMENTATION_HELP_LINKS.find((link) => link.id === view.mode) ??
+                  (view.mode === 'knowledge-map'
+                    ? DOCUMENTATION_HELP_LINKS.find((link) => link.id === 'knowledge-map')
+                    : null);
+                return (
+                  <div key={view.mode} className="grid min-w-max justify-items-center gap-1">
+                    <button
+                      className={`ui-button min-h-7 w-full px-3 text-[10px] ${
+                        isActive ? 'ui-button-primary text-white' : 'text-neutral-700'
+                      }`}
+                      onClick={() => setActiveView(view.mode)}
+                    >
+                      {getDocumentationViewLabel(view.mode)}
+                    </button>
+                    {helpLink ? (
+                      <button
+                        className="w-full text-center text-[10px] font-normal text-[var(--color-accent-strong)] underline underline-offset-2 transition-colors hover:text-[var(--color-accent)]"
+                        onClick={() => setActiveHelpTopic(helpLink.id)}
+                      >
+                        {helpLink.label}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="grid gap-1 justify-items-center xl:justify-items-end">
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center xl:justify-end xl:text-right">
                 <button
-                  className="text-[11px] font-normal text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
+                  className="text-[10px] font-normal text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
                   onClick={() => setShowManifestView(true)}
                 >
                   (Manif.)
                 </button>
                 {activeView === 'audit' ? (
                   <button
-                    className="mt-1 text-[10px] font-normal text-neutral-400 underline-offset-2 transition-colors hover:text-neutral-700 hover:underline"
+                    className="text-[10px] font-normal text-neutral-400 underline-offset-2 transition-colors hover:text-neutral-700 hover:underline"
                     onClick={() => setShowAuditManifestView(true)}
                   >
                     Audit manif.
@@ -2638,7 +3362,7 @@ export function PageB() {
                 ) : null}
               </div>
               <button
-                className="ui-button ui-button-primary min-h-9 px-2.5 text-[11px] text-white sm:min-h-8"
+                className="ui-button ui-button-primary min-h-8 px-3 text-[11px] text-white justify-self-center xl:justify-self-center"
                 onClick={() => setShowNewProjectModal(true)}
               >
                 + new project
@@ -2646,43 +3370,24 @@ export function PageB() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            <div className="flex flex-wrap gap-2">
-              {documentationModel.views.map((view) => {
-                const isActive = view.mode === activeView;
-                return (
-                  <button
-                    key={view.mode}
-                    className={`ui-button min-h-8 px-3 text-[11px] ${
-                      isActive ? 'ui-button-primary text-white' : 'text-neutral-700'
-                    }`}
-                    onClick={() => setActiveView(view.mode)}
-                  >
-                    {getDocumentationViewLabel(view.mode)}
-                  </button>
-                );
-              })}
-            </div>
-
-            {activeView === 'structure' ? (
-              <div className="ui-surface-subtle rounded-[18px] px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                  <span>{activeViewDefinition?.productRole === 'primary' ? 'Primary production view' : activeViewDefinition?.productRole === 'secondary' ? 'Secondary analytical view' : 'Supporting production view'}</span>
-                  <span className="text-neutral-300">|</span>
-                  <span>{activeViewDefinition?.label ?? getDocumentationViewLabel(activeView)}</span>
-                </div>
-                <div className="mt-2 text-xs leading-[1.45] text-neutral-700">
-                  {activeViewDefinition?.description ?? getDocumentationViewDescription(activeView)}
-                </div>
+          {activeView === 'structure' ? (
+            <div className="mt-2 ui-surface-subtle rounded-[16px] px-3 py-1.5">
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                <span>{activeViewDefinition?.productRole === 'primary' ? 'Primary production view' : activeViewDefinition?.productRole === 'secondary' ? 'Secondary analytical view' : 'Supporting production view'}</span>
+                <span className="text-neutral-300">|</span>
+                <span>{activeViewDefinition?.label ?? getDocumentationViewLabel(activeView)}</span>
               </div>
-            ) : null}
-          </div>
+              <div className="mt-1 text-xs leading-[1.35] text-neutral-700">
+                {activeViewDefinition?.description ?? getDocumentationViewDescription(activeView)}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div
         className={`scrollbar-thin flex-1 px-2 pb-3 sm:px-3 sm:pb-4 ${
-          activeView === 'knowledge-map' || activeView === 'repository' || activeView === 'audit' || activeView === 'investigate'
+          activeView === 'repository' || activeView === 'audit' || activeView === 'investigate'
             ? 'overflow-hidden'
             : 'overflow-y-auto'
         }`}
@@ -2736,42 +3441,6 @@ export function PageB() {
           {documentationContent}
         </div>
       </div>
-
-      {openFile && openProject && (
-        <FileViewer
-          file={openFile}
-          projectName={openProject.name}
-          metadata={
-            openFileRepositoryItem
-              ? {
-                  documentType: openFileRepositoryItem.documentKind,
-                  documentState: openFileRepositoryItem.documentState,
-                  documentVersion: openFileRepositoryItem.documentVersion,
-                  userLabel: openFileRepositoryItem.userLabel,
-                  ownerLabel: openFileRepositoryItem.ownerLabel,
-                  lastResponsible: openFileRepositoryItem.lastResponsible,
-                  updatedAt: openFileRepositoryItem.updatedAt,
-                  latestReference: openFileInvestigationThread?.lastSeen ?? openFileRepositoryItem.updatedAt,
-                }
-              : undefined
-          }
-          onClose={() => setOpenFileId(null)}
-        />
-      )}
-
-      {showRepositoryDetailModal && selectedRepositoryItem && (
-        <Modal
-          title={`Repository Detail - ${selectedRepositoryItem.title}`}
-          onClose={() => setShowRepositoryDetailModal(false)}
-          width="max-w-3xl"
-        >
-          <RepositoryDetailPanel
-            item={selectedRepositoryItem}
-            href={buildRepositoryItemHref(selectedRepositoryItem.id)}
-            onOpenFile={() => setOpenFileId(selectedRepositoryItem.relatedFileId ?? null)}
-          />
-        </Modal>
-      )}
 
       {showNewProjectModal && (
         <Modal title="New project" onClose={() => setShowNewProjectModal(false)}>
@@ -2912,7 +3581,7 @@ export function PageB() {
                   A well-read Audit View record should show the document name, project, team,
                   document class or type, document state, version, USER, Responsible, Reference
                   Time, Source Workspace, Audit Linkage, and Path, together with navigation actions
-                  such as Open in Repository View and Open file. That allows the user to move from
+                  such as View Details and Open Document. That allows the user to move from
                   traceability back into real operation.
                 </p>
               </div>
@@ -2994,12 +3663,10 @@ function DocumentListRowIcon() {
 
 function InvestigationThreadCard({
   thread,
-  onOpenDocument,
-  onOpenFile,
+  actions,
 }: {
   thread: InvestigationThread;
-  onOpenDocument: () => void;
-  onOpenFile?: () => void;
+  actions: RepositoryAction[];
 }) {
   const visibleChronology = [...thread.chronology].slice(-4).reverse();
   const chronologySummary = visibleChronology
@@ -3037,10 +3704,22 @@ function InvestigationThreadCard({
       </div>
 
       <div className="mt-2 grid gap-2 text-xs text-neutral-700 sm:grid-cols-2 xl:grid-cols-4">
-        <DetailField label="USER" value={thread.userLabel ?? 'n/a'} />
+        <DetailField label="User" value={thread.userLabel ?? 'n/a'} />
         <DetailField label="Last Responsible" value={thread.lastResponsible ?? 'n/a'} />
         <DetailField label="Document Type" value={thread.documentKind ?? 'n/a'} />
         <DetailField label="Latest Reference" value={thread.lastSeen ?? 'n/a'} />
+      </div>
+
+      <div className="mt-2 grid gap-2 rounded-[14px] border border-neutral-200 bg-white px-3 py-3 text-xs text-neutral-700 sm:grid-cols-3">
+        <DetailField label="Investigation Lens" value={thread.projectLabel ?? thread.teamLabel} />
+        <DetailField
+          label="Related Actors"
+          value={thread.relatedActors.length > 0 ? thread.relatedActors.slice(0, 3).join(', ') : 'No named actors'}
+        />
+        <DetailField
+          label="Timeline Range"
+          value={`${thread.firstSeen ?? 'n/a'} to ${thread.lastSeen ?? 'n/a'}`}
+        />
       </div>
 
       <div className="mt-2 grid gap-2">
@@ -3062,20 +3741,17 @@ function InvestigationThreadCard({
       </div>
 
       <div className="mt-2 flex flex-wrap gap-2">
-        <button
-          className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
-          onClick={onOpenDocument}
-        >
-          Open in Repository View
-        </button>
-        {onOpenFile ? (
+        {actions.map((action) => (
           <button
-            className="ui-button ui-button-primary min-h-8 px-3 text-[11px] text-white"
-            onClick={onOpenFile}
+            key={action.key}
+            className={`ui-button min-h-8 px-3 text-[11px] ${
+              action.primary ? 'ui-button-primary text-white' : 'text-neutral-700'
+            }`}
+            onClick={action.onClick}
           >
-            Open file
+            {action.label}
           </button>
-        ) : null}
+        ))}
       </div>
     </div>
   );
@@ -3426,6 +4102,23 @@ function KnowledgeMapCanvas({
     offsetY: 0,
   });
   const selectedNodeId = selectedNode?.id ?? null;
+  const connectedNodeIds = useMemo(() => {
+    const connected = new Set<string>();
+    if (!selectedNodeId) {
+      return connected;
+    }
+
+    connected.add(selectedNodeId);
+    edges.forEach((edge) => {
+      if (edge.sourceId === selectedNodeId) {
+        connected.add(edge.targetId);
+      }
+      if (edge.targetId === selectedNodeId) {
+        connected.add(edge.sourceId);
+      }
+    });
+    return connected;
+  }, [edges, selectedNodeId]);
 
   useEffect(() => {
     const container = viewportRef.current;
@@ -3574,7 +4267,7 @@ function KnowledgeMapCanvas({
   return (
     <div
       ref={viewportRef}
-      className="ui-surface-subtle relative min-h-[540px] overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0f172a_0%,#111827_100%)] px-1.5 py-1.5"
+      className="ui-surface-subtle relative h-full min-h-[clamp(520px,62vh,680px)] overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.12),transparent_24%),linear-gradient(180deg,#0f172a_0%,#111827_100%)] px-1.5 py-1.5"
       onWheel={handleWheel}
       onPointerDown={handleViewportPointerDown}
       onPointerMove={handleViewportPointerMove}
@@ -3591,7 +4284,7 @@ function KnowledgeMapCanvas({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[320px] rounded-[16px] border border-slate-700/70 bg-slate-950/74 px-3 py-2 shadow-sm backdrop-blur">
+      <div className="hidden pointer-events-none absolute bottom-3 left-3 z-10 max-w-[320px] rounded-[16px] border border-slate-700/70 bg-slate-950/74 px-3 py-2 shadow-sm backdrop-blur">
         {selectedNode ? (
           <div className="grid gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -3619,7 +4312,7 @@ function KnowledgeMapCanvas({
                   className="ui-button min-h-7 px-2.5 text-[10px] text-neutral-700"
                   onClick={onOpenDocument}
                 >
-                  Open in Repository View
+                  View Details
                 </button>
               ) : null}
               {onOpenFile ? (
@@ -3628,7 +4321,7 @@ function KnowledgeMapCanvas({
                   className="ui-button ui-button-primary min-h-7 px-2.5 text-[10px] text-white"
                   onClick={onOpenFile}
                 >
-                  Open file
+                  Open Document
                 </button>
               ) : null}
             </div>
@@ -3642,7 +4335,7 @@ function KnowledgeMapCanvas({
         width="100%"
         height="100%"
         viewBox={`0 0 ${canvasFrameWidth} ${canvasFrameHeight}`}
-        className="min-h-[520px] w-full"
+        className="h-full min-h-[clamp(518px,62vh,678px)] w-full"
       >
         <g transform={`translate(${viewport.offsetX} ${viewport.offsetY}) scale(${viewport.scale})`}>
           {edges.map((edge) => {
@@ -3651,6 +4344,9 @@ function KnowledgeMapCanvas({
             if (!source || !target) {
               return null;
             }
+            const isConnectedToSelection =
+              selectedNodeId !== null &&
+              (edge.sourceId === selectedNodeId || edge.targetId === selectedNodeId);
             return (
               <g key={edge.id}>
                 <line
@@ -3659,15 +4355,25 @@ function KnowledgeMapCanvas({
                   x2={target.x}
                   y2={target.y}
                   stroke={getKnowledgeEdgeStroke(edge.edgeType)}
-                  strokeWidth={KNOWLEDGE_GRAPH_TARGET.lineSizeMultiplier}
-                  opacity="0.42"
+                  strokeWidth={
+                    KNOWLEDGE_GRAPH_TARGET.lineSizeMultiplier * (isConnectedToSelection ? 1.55 : 1)
+                  }
+                  opacity={
+                    selectedNodeId ? (isConnectedToSelection ? 0.82 : 0.14) : 0.42
+                  }
                 />
                 <text
                   x={(source.x + target.x) / 2}
                   y={(source.y + target.y) / 2 - 6}
                   textAnchor="middle"
                   className="fill-slate-400 text-[8px] uppercase tracking-[0.12em]"
-                  opacity={Math.max(0.44, getKnowledgeLabelOpacity(viewport.scale) - 0.18)}
+                  opacity={
+                    selectedNodeId
+                      ? isConnectedToSelection
+                        ? Math.max(0.56, getKnowledgeLabelOpacity(viewport.scale) - 0.08)
+                        : 0.16
+                      : Math.max(0.44, getKnowledgeLabelOpacity(viewport.scale) - 0.18)
+                  }
                 >
                   {edge.label}
                 </text>
@@ -3683,12 +4389,14 @@ function KnowledgeMapCanvas({
             const isSelected = node.id === selectedNodeId;
             const baseRadius = node.nodeType === 'document' || node.nodeType === 'saved-file' ? 3 : 2;
             const radius = baseRadius * KNOWLEDGE_GRAPH_TARGET.nodeSizeMultiplier;
+            const isConnected = selectedNodeId ? connectedNodeIds.has(node.id) : true;
             return (
               <g
                 key={node.id}
                 data-knowledge-node="true"
                 transform={`translate(${position.x}, ${position.y})`}
                 className="cursor-grab active:cursor-grabbing"
+                opacity={selectedNodeId ? (isConnected ? 1 : 0.22) : 1}
                 onPointerDown={(event) => handleNodePointerDown(event, node)}
               >
                 <circle
@@ -3762,7 +4470,7 @@ function AuditEntryCard({
       </div>
 
       <div className="mt-2 grid gap-2 text-xs text-neutral-700 sm:grid-cols-2">
-        <DetailField label="USER" value={entry.userLabel ?? 'n/a'} />
+        <DetailField label="User" value={entry.userLabel ?? 'n/a'} />
         <DetailField label="Responsible" value={entry.responsibleLabel ?? 'n/a'} />
         <DetailField label="Reference Time" value={entry.occurredAt ?? 'n/a'} />
         <DetailField label="Source Workspace" value={entry.sourceWorkspace} />
@@ -3779,14 +4487,14 @@ function AuditEntryCard({
           className="ui-button min-h-8 px-3 text-[11px] text-neutral-700"
           onClick={onOpenDocument}
         >
-          Open in Repository View
+          View Details
         </button>
         {onOpenFile ? (
           <button
             className="ui-button ui-button-primary min-h-8 px-3 text-[11px] text-white"
             onClick={onOpenFile}
           >
-            Open file
+            Open Document
           </button>
         ) : null}
       </div>
@@ -3812,7 +4520,10 @@ function CompactAuditEntryRow({
                 {entry.documentTitle}
               </div>
               <div className="mt-0.5 truncate text-[11px] leading-5 text-neutral-600">
-                {entry.teamLabel} · {entry.projectLabel ?? 'No project'} · {entry.recordClass}
+                {entry.teamLabel} · {entry.projectLabel ?? 'No project'} · {getAuditEntryTypeLabel(entry)}
+              </div>
+              <div className="mt-1 text-[11px] leading-[1.45] text-neutral-500">
+                {entry.eventLabel} · {entry.recordClass}
               </div>
             </div>
           </div>
@@ -3851,12 +4562,12 @@ function CompactAuditEntryRow({
           target="_blank"
           rel="noreferrer"
         >
-          Open
+          View Details
         </a>
       </div>
 
       <div className="mt-2 grid gap-x-4 gap-y-1.5 text-xs text-neutral-700 sm:grid-cols-3">
-        <DetailField label="USER" value={entry.userLabel ?? 'n/a'} />
+        <DetailField label="User" value={entry.userLabel ?? 'n/a'} />
         <DetailField label="Responsible" value={entry.responsibleLabel ?? 'n/a'} />
         <DetailField label="Reference Time" value={entry.occurredAt ?? 'n/a'} />
         <DetailField label="Source Workspace" value={entry.sourceWorkspace} />
@@ -3872,14 +4583,14 @@ function CompactAuditEntryRow({
 
 function AuditEntryReferenceRow({
   entry,
-  onOpen,
+  actions,
 }: {
   entry: DocumentationAuditEntry;
-  onOpen: () => void;
+  actions: RepositoryAction[];
 }) {
   return (
     <div className="rounded-[14px] border border-neutral-200 bg-white/80 px-3 py-2">
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_minmax(0,0.85fr)_minmax(0,0.9fr)_minmax(0,1.25fr)_auto]">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_auto]">
         <div className="min-w-0 border-neutral-200 md:border-r md:pr-3">
           <div className="flex items-start gap-2">
             <DocumentListRowIcon />
@@ -3895,31 +4606,24 @@ function AuditEntryReferenceRow({
         </div>
 
         <div className="grid gap-2">
-          <DetailField label="USER" value={entry.userLabel ?? 'n/a'} />
-          <DetailField label="SOURCE WORKSPACE" value={entry.sourceWorkspace} />
+          <DetailField label="Actor" value={getAuditEntryActorLabel(entry)} />
+          <DetailField label="User" value={entry.userLabel ?? 'n/a'} />
         </div>
 
         <div className="grid gap-2">
-          <DetailField label="RESPONSIBLE" value={entry.responsibleLabel ?? 'n/a'} />
+          <DetailField label="Event Type" value={entry.eventLabel} />
+          <DetailField label="Source Workspace" value={entry.sourceWorkspace} />
+        </div>
+
+        <div className="grid gap-2">
+          <DetailField label="Reference Time" value={entry.occurredAt ?? 'n/a'} />
           <DetailField
-            label="AUDIT LINKAGE"
+            label="Audit Linkage"
             value={entry.auditEventIds.length ? `${entry.auditEventIds.length} linked event(s)` : 'n/a'}
           />
         </div>
 
-        <div className="grid gap-2">
-          <DetailField label="REFERENCE TIME" value={entry.occurredAt ?? 'n/a'} />
-          <div className="grid gap-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-              PATH
-            </div>
-            <div className="truncate text-xs leading-[1.5] text-neutral-800" title={entry.path}>
-              {entry.path}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-[88px] flex-col items-end justify-between gap-3">
+        <div className="flex min-w-[170px] flex-col items-end justify-between gap-3">
           <div className="flex flex-wrap justify-end gap-2">
             {entry.documentVersion ? (
               <div className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
@@ -3934,21 +4638,38 @@ function AuditEntryReferenceRow({
               {entry.eventLabel}
             </div>
           </div>
-          <button
-            className="ui-button min-h-7 px-3 text-[11px] text-neutral-700"
-            onClick={onOpen}
-          >
-            Open
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {actions.map((action) => (
+              <button
+                key={action.key}
+                className={`ui-button min-h-7 px-3 text-[11px] ${
+                  action.primary ? 'ui-button-primary text-white' : 'text-neutral-700'
+                }`}
+                onClick={action.onClick}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
         </div>
+      </div>
+
+      <div className="mt-2 grid gap-x-4 gap-y-1.5 border-t border-neutral-200 pt-2 text-xs text-neutral-700 sm:grid-cols-3">
+        <DetailField label="Document State" value={entry.documentState ?? 'n/a'} />
+        <DetailField label="Document Version" value={entry.documentVersion ?? 'n/a'} />
+        <DetailField label="PATH" value={entry.path} long />
       </div>
     </div>
   );
 }
 
 function RepositoryItemCard({
-  href,
   itemType,
+  typeLabel,
+  teamLabel,
+  ownerLabel,
+  sourcePanelLabel,
+  updatedAt,
   title,
   meta,
   secondary,
@@ -3956,12 +4677,17 @@ function RepositoryItemCard({
   documentState,
   documentVersion,
   lastResponsible,
+  readiness,
   selected,
   onSelect,
-  onOpen,
+  actions,
 }: {
-  href: string;
   itemType: DocumentationRepositoryItem['itemType'];
+  typeLabel: string;
+  teamLabel: string;
+  ownerLabel: string | null;
+  sourcePanelLabel: string | null;
+  updatedAt: string | null;
   title: string;
   meta: string;
   secondary: string;
@@ -3969,82 +4695,128 @@ function RepositoryItemCard({
   documentState: DocumentationDocumentState | null;
   documentVersion: string | null;
   lastResponsible: string | null;
+  readiness: ReturnType<typeof getDocumentReadinessFields>;
   selected: boolean;
   onSelect: () => void;
-  onOpen?: (() => void) | null;
+  actions: RepositoryAction[];
 }) {
   const isDocument = itemType === 'file' || itemType === 'saved-object';
   const stateLabel = documentState ?? status;
+  const visibleDocumentState =
+    isDocument && stateLabel === 'Active'
+      ? ('Active' as DocumentationDocumentState)
+      : isDocument && stateLabel === 'Archived'
+        ? ('Archived' as DocumentationDocumentState)
+        : documentState;
 
   return (
     <div
-      className={`rounded-[14px] border border-neutral-200 bg-white/80 px-3 py-2.5 transition-colors ${
+      className={`rounded-[14px] border border-neutral-200 bg-white/80 px-3 py-2 transition-colors ${
         selected ? 'ring-2 ring-[var(--color-accent)] ring-offset-1' : ''
       }`}
       onClick={onSelect}
     >
-      <div className="flex items-start justify-between gap-2.5">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <DocumentListRowIcon />
-            <a
-              href={href}
-              className="truncate text-[13px] font-semibold text-neutral-900 underline-offset-2 hover:underline"
-              onClick={(event) => {
-                event.preventDefault();
-                onSelect();
-              }}
-            >
-              {title}
-            </a>
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <DocumentListRowIcon />
+              <button
+                className="truncate text-left text-[13px] font-semibold text-neutral-900 underline-offset-2 hover:underline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect();
+                }}
+              >
+                {title}
+              </button>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              {isDocument && visibleDocumentState ? (
+                <div
+                  className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-[0.08em] ${getDocumentStateClasses(
+                    visibleDocumentState,
+                  )}`}
+                >
+                  {visibleDocumentState}
+                </div>
+              ) : null}
+              {isDocument && documentVersion ? (
+                <div className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+                  {documentVersion}
+                </div>
+              ) : null}
+              {!isDocument ? (
+                <div className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                  {stateLabel}
+                </div>
+              ) : null}
+            </div>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-[1.45] text-neutral-600">
+
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <div className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
+              {typeLabel}
+            </div>
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold tracking-[0.08em] text-sky-700">
+              {teamLabel}
+            </div>
+            {sourcePanelLabel ? (
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[9px] font-medium tracking-[0.08em] text-neutral-600">
+                {sourcePanelLabel}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] leading-[1.35] text-neutral-600">
             <span>{meta}</span>
             <span>{secondary}</span>
           </div>
-          {isDocument && lastResponsible ? (
-            <div className="mt-0.5 text-[10px] font-medium text-neutral-500">
-              Last responsible: {lastResponsible}
+
+          <div className="mt-1.5 flex flex-wrap items-end justify-between gap-2 border-t border-neutral-200/80 pt-1.5">
+            <div className="grid gap-1 text-[10px] text-neutral-600">
+              {isDocument ? (
+                <>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span><span className="font-semibold text-neutral-800">State:</span> {visibleDocumentState ?? stateLabel}</span>
+                    <span><span className="font-semibold text-neutral-800">Version:</span> {documentVersion ?? 'n/a'}</span>
+                    <span><span className="font-semibold text-neutral-800">Updated:</span> {updatedAt?.slice(0, 10) ?? 'n/a'}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span><span className="font-semibold text-neutral-800">Owner:</span> {ownerLabel ?? 'system'}</span>
+                    <span><span className="font-semibold text-neutral-800">Responsible:</span> {lastResponsible ?? ownerLabel ?? 'n/a'}</span>
+                    <span><span className="font-semibold text-neutral-700">Sensitivity:</span> {readiness.sensitivity}</span>
+                    <span><span className="font-semibold text-neutral-700">Access:</span> {readiness.accessScope}</span>
+                    <span><span className="font-semibold text-neutral-700">Official copy:</span> {readiness.officialCopy}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-neutral-500">
+                  <span>Owner: {ownerLabel ?? 'system'}</span>
+                  <span>Updated: {updatedAt?.slice(0, 10) ?? 'n/a'}</span>
+                </div>
+              )}
             </div>
-          ) : null}
+
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              {actions.map((action) => (
+                <button
+                  key={action.key}
+                  className={`ui-button min-h-7 px-3 text-[10px] ${
+                    action.primary ? 'ui-button-primary text-white' : 'text-neutral-700'
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    action.onClick?.();
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {isDocument && documentState ? (
-            <div
-              className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-[0.08em] ${getDocumentStateClasses(
-                documentState,
-              )}`}
-            >
-              {documentState}
-            </div>
-          ) : null}
-          {isDocument && documentVersion ? (
-            <div className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-600">
-              {documentVersion}
-            </div>
-          ) : null}
-          {!isDocument ? (
-            <div className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
-              {stateLabel}
-            </div>
-          ) : null}
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="ui-button inline-flex min-h-7 items-center px-3 text-[10px] font-semibold text-neutral-700"
-            onClick={(event) => event.stopPropagation()}
-          >
-            Open
-          </a>
-        </div>
-      </div>
-      <div className="mt-1.5 flex flex-wrap justify-end gap-2">
-        {onOpen ? (
-          <button className="ui-button min-h-7 px-3 text-[10px] text-neutral-700" onClick={onOpen}>
-            Open item
-          </button>
-        ) : null}
+
       </div>
     </div>
   );
@@ -4052,40 +4824,72 @@ function RepositoryItemCard({
 
 function RepositoryDetailPanel({
   item,
-  href,
-  onOpenFile,
+  actions,
 }: {
   item: DocumentationRepositoryItem;
-  href: string;
-  onOpenFile: () => void;
+  actions: RepositoryAction[];
 }) {
   const isDocument = item.itemType === 'file' || item.itemType === 'saved-object';
+  const readiness = getDocumentReadinessFields(item);
+  const visibleDocumentState =
+    item.documentState ??
+    (item.status === 'active'
+      ? ('Active' as DocumentationDocumentState)
+      : item.status === 'archived'
+        ? ('Archived' as DocumentationDocumentState)
+        : null);
 
   return (
     <div className="mt-3 grid gap-4">
       <div>
         <div className="text-base font-semibold tracking-[-0.02em] text-neutral-900">{item.title}</div>
         <div className="mt-1 text-xs leading-[1.5] text-neutral-600">
-          {item.itemType} from {item.sourceWorkspace}
+          {getRepositoryItemTypeLabel(item)} · {item.sourceWorkspace}
         </div>
       </div>
 
-      <div className="grid gap-3 text-xs text-neutral-700 sm:grid-cols-2">
+      <div className="grid gap-2 rounded-[14px] border border-neutral-200 bg-white px-3 py-3 text-[11px] text-neutral-700">
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span><span className="font-semibold text-neutral-900">State:</span> {visibleDocumentState ?? item.status}</span>
+          <span><span className="font-semibold text-neutral-900">Version:</span> {item.documentVersion ?? 'n/a'}</span>
+          <span><span className="font-semibold text-neutral-900">Updated:</span> {item.updatedAt?.slice(0, 10) ?? 'n/a'}</span>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span><span className="font-semibold text-neutral-900">Owner:</span> {item.ownerLabel ?? 'System'}</span>
+          <span><span className="font-semibold text-neutral-900">User:</span> {item.userLabel ?? 'n/a'}</span>
+          <span><span className="font-semibold text-neutral-900">Responsible:</span> {item.lastResponsible ?? item.ownerLabel ?? 'n/a'}</span>
+        </div>
+      </div>
+
+      <div className="grid gap-2 rounded-[14px] border border-neutral-200 bg-white px-3 py-3 text-[11px] text-neutral-700">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+          Compliance / data safety readiness
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <DetailField label="Record Class" value={readiness.recordClass} />
+          <DetailField label="Sensitivity" value={readiness.sensitivity} />
+          <DetailField label="Official Copy" value={readiness.officialCopy} />
+          <DetailField label="Access Scope" value={readiness.accessScope} />
+          <DetailField label="Retention Readiness" value={readiness.retentionReadiness} />
+          <DetailField label="Integrity Readiness" value={readiness.integrityReadiness} />
+        </div>
+        <DetailField label="Source Of Truth Marker" value={readiness.sourceOfTruth} />
+      </div>
+
+      <div className="grid gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+          Secondary metadata
+        </div>
+        <div className="grid gap-3 text-xs text-neutral-700 sm:grid-cols-2">
         <DetailField label="Team" value={item.teamLabel} />
         <DetailField label="Object Type" value={item.objectType ?? item.itemType} />
-        <DetailField label="USER" value={item.userLabel ?? 'n/a'} />
-        <DetailField label="Owner" value={item.ownerLabel ?? 'System ownership'} />
+        <DetailField label="User" value={item.userLabel ?? 'n/a'} />
+        <DetailField label="Owner" value={item.ownerLabel ?? 'System'} />
         <DetailField label="Origin Agent" value={item.ownerRole ?? 'n/a'} />
         <DetailField label="Source Panel" value={item.sourcePanelLabel ?? 'n/a'} />
-        <DetailField label={isDocument ? 'Document State' : 'Status'} value={item.documentState ?? item.status} />
-        {isDocument ? (
-          <DetailField label="Version" value={item.documentVersion ?? 'n/a'} />
-        ) : (
+        {!isDocument ? (
           <DetailField label="Versions" value={item.versionCount !== null ? String(item.versionCount) : 'n/a'} />
-        )}
-        <DetailField label="Last Responsible" value={item.lastResponsible ?? item.ownerLabel ?? 'n/a'} />
-        <DetailField label="Class" value={item.recordClass} />
-        <DetailField label="Updated" value={item.updatedAt?.slice(0, 10) ?? 'n/a'} />
+        ) : null}
         <DetailField label="Project" value={item.projectLabel ?? 'n/a'} />
         <DetailField label="Conversation Source" value={item.sourceConversationLabel ?? 'n/a'} />
         <DetailField label="Provenance" value={item.provenanceSummary ?? 'n/a'} />
@@ -4098,6 +4902,7 @@ function RepositoryDetailPanel({
           label="Lock"
           value={item.lockState === null ? 'n/a' : item.lockState ? 'Locked' : 'Unlocked'}
         />
+        </div>
       </div>
 
       {item.automaticTags && item.automaticTags.length > 0 ? (
@@ -4121,22 +4926,17 @@ function RepositoryDetailPanel({
       <DetailField label="Path" value={item.path} long />
 
       <div className="flex flex-wrap gap-2">
-        {item.relatedFileId ? (
+        {actions.map((action) => (
           <button
-            className="ui-button ui-button-primary min-h-8 px-3 text-[11px] text-white"
-            onClick={onOpenFile}
+            key={action.key}
+            className={`ui-button min-h-8 px-3 text-[11px] ${
+              action.primary ? 'ui-button-primary text-white' : 'text-neutral-700'
+            }`}
+            onClick={() => action.onClick?.()}
           >
-            Open file
+            {action.label}
           </button>
-        ) : null}
-        <a
-          href={href}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="ui-button inline-flex min-h-8 items-center px-3 text-[11px] text-neutral-700"
-        >
-          Open in new tab/window
-        </a>
+        ))}
       </div>
     </div>
   );

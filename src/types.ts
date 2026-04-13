@@ -49,11 +49,13 @@ export type ActivityLifecycleEventType =
   | 'deleted'
   | 'audit-ai-answer';
 export type DocumentationDocumentState =
+  | 'Active'
   | 'Draft'
   | 'In Progress'
   | 'Under Review'
   | 'Approved'
-  | 'Locked';
+  | 'Locked'
+  | 'Archived';
 export type ReviewForwardSourceKind =
   | 'general-manager'
   | 'main-worker'
