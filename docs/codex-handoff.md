@@ -1271,3 +1271,110 @@ Recommended reduction or deferment:
 - `npm run build` passing after the Documentation Mode follow-up changes
 - no `lint` script
 - no `tests` script
+
+## 2026-04-13 - Documentation Mode stabilization pack before GitHub push
+
+### Current Branch Intent
+
+This branch is now carrying the final stabilization pass for `Documentation Mode` MVP.
+
+The work in progress is not a new feature wave. It is a consolidation pack that closes the main MVP behaviors across:
+- Repository View
+- Audit View
+- Investigate View
+- Knowledge Map
+- separate `Document Page`
+- visible documentary governance / readiness layers
+
+### Current Working Tree
+
+Files currently modified or pending as part of this pack:
+- `src/App.tsx`
+- `src/documentationModel.ts`
+- `src/pages/PageB.tsx`
+- `src/types.ts`
+- `src/components/DocumentPage.tsx`
+
+This means the next operator should treat the push as a coordinated `Documentation Mode` snapshot, not as a one-file tweak.
+
+### What Is Already Landed In Code
+
+The current codebase now includes:
+- separate clean `Document Page`
+- `Open Document` / `Open Handoff` / `Open Selection` / `Open Backup` opening in a separate clean tab
+- `Close Document` attempting to close only the document tab
+- visible document state, version, updated date, owner / responsible
+- Audit View linked more clearly to documentary objects and `Audit Log`
+- Investigate View with thematic / timeline framing
+- Knowledge Map simplified into a more useful secondary relational layer
+- readiness / compliance metadata surfaced conservatively in documentary detail
+
+### Most Sensitive File
+
+`src/pages/PageB.tsx` remains the highest-risk file.
+
+Why:
+- it concentrates most `Documentation Mode` view logic
+- it now contains shared action semantics such as `View Details`
+- it also contains the densest layout logic for Repository / Audit / Investigate / Knowledge Map
+
+Do not treat `PageB.tsx` as casually refactorable during the push-prep phase.
+
+### Final View Details Rule
+
+The current intended doctrine is:
+
+`View Details` must only:
+- keep `Documentation Mode` open
+- keep the current view active
+- preserve filters and search
+- select the clicked documentary item
+- refresh the detail selection
+
+It must not:
+- switch to `Repository View`
+- open `Document Page`
+- open a new tab
+- reset filters
+- reset search
+- alter layout
+
+Recent stabilization in `src/pages/PageB.tsx` already removed the forced jump to `repository` and limited Repository auto-selection logic to Repository context only.
+
+### Knowledge Map Rule
+
+The current Knowledge Map direction is:
+- secondary relational understanding layer
+- not a consultation/detail page
+- no lower detail slab competing with the map
+- graph should use the recovered vertical space
+
+Recent changes removed the lower contextual slab from the visible layout and made the map height more adaptive when the manager sidebar is expanded.
+
+### Non-Regression Rules Before Push
+
+- Do not reintroduce a second documentary dataset beside `savedObjects` / structural metadata.
+- Do not let `View Details` change active view again.
+- Do not let Repository fallback selection override detail selection coming from Audit / Investigate / Knowledge Map.
+- Do not bring back redundant lower detail slabs in `Knowledge Map`.
+- Do not convert `Document Page` back into a modal or full AISync shell.
+- Do not mix final MVP stabilization with speculative redesign.
+
+### Validation State Before Push
+
+Executed:
+- `npm run build` passing after the latest stabilization edits
+
+Still human-visual, not yet closed automatically:
+- final cross-view verification of `View Details`
+- final visual verification of `Knowledge Map` with sidebar collapsed and expanded
+- final visual verification of `Repository View` spacing / card density
+- final visual verification of separate `Document Page`
+
+### Recommended Push Framing
+
+If the branch is pushed now, describe it as:
+
+`Documentation Mode MVP stabilization and handoff-ready snapshot`
+
+That wording is more accurate than calling it a feature release, because this pack mainly closes behavior, semantics, and layout debt across the documentary module.
