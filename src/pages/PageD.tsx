@@ -80,19 +80,20 @@ function TreeAddUserTeamAnchor({ onClick }: { onClick: () => void }) {
       data-pan-block="true"
       className="absolute"
       style={{
-        left: 'calc(100% + 64px)',
-        top: '-2px',
-        width: `${TREE_NODE_WIDTH}px`,
-        height: `${TREE_SUB_MANAGER_HEIGHT}px`,
+        left: 'calc(100% + 56px)',
+        top: '50%',
+        width: `${TREE_AUX_NODE_WIDTH}px`,
+        height: `${TREE_AUX_NODE_HEIGHT}px`,
+        transform: 'translateY(-50%)',
       }}
     >
       <div
         aria-hidden="true"
         className="absolute"
         style={{
-          left: '-64px',
+          left: '-56px',
           top: '50%',
-          width: '64px',
+          width: '56px',
           borderTop: '2px dashed rgba(100, 116, 139, 0.52)',
           transform: 'translateY(-50%)',
         }}
@@ -100,20 +101,20 @@ function TreeAddUserTeamAnchor({ onClick }: { onClick: () => void }) {
       <button
         type="button"
         data-pan-block="true"
-        className="flex h-full w-full flex-col items-center justify-center rounded-[18px] border-2 border-dashed px-2 py-2 text-center transition-colors hover:border-neutral-500 hover:bg-white/90"
+        className="flex h-full w-full flex-col items-center justify-center rounded-[16px] border-2 border-dashed px-2 py-2 text-center transition-colors hover:border-neutral-500 hover:bg-white/90"
         style={{
           borderColor: 'rgba(100, 116, 139, 0.45)',
           background:
             'linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(241,245,249,0.96) 100%)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), 0 8px 16px rgba(15,23,42,0.05)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), 0 6px 14px rgba(15,23,42,0.05)',
         }}
         onClick={onClick}
       >
-        <div className="text-[20px] font-semibold leading-none text-neutral-700">+</div>
-        <div className="mt-2 line-clamp-2 text-[11px] font-semibold leading-[1.2] text-neutral-900">
+        <div className="text-[18px] font-semibold leading-none text-neutral-700">+</div>
+        <div className="mt-1.5 line-clamp-2 text-[10px] font-semibold leading-[1.15] text-neutral-900">
           Connect Team
         </div>
-        <div className="mt-1 text-[8px] uppercase tracking-[0.16em] text-neutral-500">
+        <div className="mt-1 text-[7px] uppercase tracking-[0.16em] text-neutral-500">
           Link external User
         </div>
       </button>
@@ -914,6 +915,8 @@ const TREE_ROOT_WIDTH = 112;
 const TREE_ROOT_HEIGHT = 84;
 const TREE_SUB_MANAGER_HEIGHT = 120;
 const TREE_WORKER_HEIGHT = 86;
+const TREE_AUX_NODE_WIDTH = 116;
+const TREE_AUX_NODE_HEIGHT = 96;
 const TREE_LEVEL_GAP = 74;
 const TREE_SIBLING_GAP = 44;
 const TREE_CANVAS_PADDING_X = 76;
@@ -982,6 +985,91 @@ function buildTreeLayout(
     }, 0);
   };
 
+  const getSymmetricRootChildrenLayout = (children: TeamsGraphNode[]) => {
+    if (children.length === 0) {
+      return {
+        totalWidth: getNodeLayoutSize(rootNode, variant).width,
+        centersById: new Map<string, number>(),
+      };
+    }
+
+    const centersById = new Map<string, number>();
+    const widths = children.map((child) => subtreeWidthById.get(child.id) ?? 0);
+    const middleIndex = Math.floor(children.length / 2);
+
+    if (children.length % 2 === 1) {
+      centersById.set(children[middleIndex].id, 0);
+
+      for (let index = middleIndex + 1; index < children.length; index += 1) {
+        const previousCenter = centersById.get(children[index - 1].id) ?? 0;
+        const previousWidth = widths[index - 1];
+        const currentWidth = widths[index];
+        const gap = getSiblingGapBetween(children[index - 1], children[index]);
+        centersById.set(
+          children[index].id,
+          previousCenter + previousWidth / 2 + gap + currentWidth / 2,
+        );
+      }
+
+      for (let index = middleIndex - 1; index >= 0; index -= 1) {
+        const nextCenter = centersById.get(children[index + 1].id) ?? 0;
+        const currentWidth = widths[index];
+        const nextWidth = widths[index + 1];
+        const gap = getSiblingGapBetween(children[index], children[index + 1]);
+        centersById.set(
+          children[index].id,
+          nextCenter - nextWidth / 2 - gap - currentWidth / 2,
+        );
+      }
+    } else {
+      const leftCenterIndex = middleIndex - 1;
+      const rightCenterIndex = middleIndex;
+      const middleGap = getSiblingGapBetween(children[leftCenterIndex], children[rightCenterIndex]);
+
+      centersById.set(
+        children[leftCenterIndex].id,
+        -(middleGap / 2 + widths[leftCenterIndex] / 2),
+      );
+      centersById.set(
+        children[rightCenterIndex].id,
+        middleGap / 2 + widths[rightCenterIndex] / 2,
+      );
+
+      for (let index = rightCenterIndex + 1; index < children.length; index += 1) {
+        const previousCenter = centersById.get(children[index - 1].id) ?? 0;
+        const previousWidth = widths[index - 1];
+        const currentWidth = widths[index];
+        const gap = getSiblingGapBetween(children[index - 1], children[index]);
+        centersById.set(
+          children[index].id,
+          previousCenter + previousWidth / 2 + gap + currentWidth / 2,
+        );
+      }
+
+      for (let index = leftCenterIndex - 1; index >= 0; index -= 1) {
+        const nextCenter = centersById.get(children[index + 1].id) ?? 0;
+        const currentWidth = widths[index];
+        const nextWidth = widths[index + 1];
+        const gap = getSiblingGapBetween(children[index], children[index + 1]);
+        centersById.set(
+          children[index].id,
+          nextCenter - nextWidth / 2 - gap - currentWidth / 2,
+        );
+      }
+    }
+
+    const halfSpan = children.reduce((max, child, index) => {
+      const center = centersById.get(child.id) ?? 0;
+      const width = widths[index];
+      return Math.max(max, Math.abs(center) + width / 2);
+    }, 0);
+
+    return {
+      totalWidth: Math.max(getNodeLayoutSize(rootNode, variant).width, halfSpan * 2),
+      centersById,
+    };
+  };
+
   const assignDepths = (nodeId: string, depth: number) => {
     const node = nodeById.get(nodeId);
     if (!node) {
@@ -1021,7 +1109,8 @@ function buildTreeLayout(
     children.forEach((child) => {
       measureSubtree(child.id);
     });
-    const totalChildrenWidth = getChildrenSpan(children);
+    const totalChildrenWidth =
+      nodeId === rootNode.id ? getSymmetricRootChildrenLayout(children).totalWidth : getChildrenSpan(children);
     const subtreeWidth = Math.max(size.width, totalChildrenWidth);
     subtreeWidthById.set(nodeId, subtreeWidth);
     return subtreeWidth;
@@ -1063,6 +1152,31 @@ function buildTreeLayout(
 
     const children = getChildNodes(allNodes, nodeId);
     if (children.length === 0) {
+      return;
+    }
+
+    if (nodeId === rootNode.id) {
+      const { centersById } = getSymmetricRootChildrenLayout(children);
+
+      children.forEach((child) => {
+        const childWidth = subtreeWidthById.get(child.id) ?? 0;
+        const childCenterOffset = centersById.get(child.id) ?? 0;
+        const childLeft = placement.centerX + childCenterOffset - childWidth / 2;
+        placeSubtree(child.id, childLeft);
+
+        const childPlacement = placementById[child.id];
+        if (childPlacement) {
+          connectors.push({
+            parentId: nodeId,
+            childId: child.id,
+            fromX: placement.centerX,
+            fromY: placement.bottomY,
+            toX: childPlacement.centerX,
+            toY: childPlacement.topY,
+          });
+        }
+      });
+
       return;
     }
 

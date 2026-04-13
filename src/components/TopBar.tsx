@@ -22,7 +22,11 @@ export function TopBar() {
       style={{ backgroundColor: ribbonColor }}
     >
       <div className="ui-topbar-inner mx-auto grid min-h-12 max-w-[1600px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 sm:min-h-14 sm:grid-cols-[minmax(180px,1fr)_minmax(0,1.15fr)_minmax(240px,1fr)] sm:gap-4 sm:py-0">
-        <div className="ui-topbar-brand flex min-w-0 items-center gap-2 sm:gap-3">
+        <a
+          className="ui-topbar-brand flex min-w-0 items-center gap-2 rounded-[10px] text-inherit no-underline outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-white/55 focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:gap-3"
+          href="/landing/aisync-landing.html"
+          aria-label="Go to AISync landing page"
+        >
           <div className="ui-topbar-badge flex h-7 w-7 shrink-0 items-center justify-center text-[11px] font-semibold tracking-[0.14em]">
             AI
           </div>
@@ -31,7 +35,7 @@ export function TopBar() {
               AISync
             </div>
           </div>
-        </div>
+        </a>
 
         <div className="ui-topbar-section min-w-0 px-1 text-center">
           <div className="flex flex-col items-center justify-center">

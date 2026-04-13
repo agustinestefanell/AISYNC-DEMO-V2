@@ -3303,7 +3303,7 @@ export function PageB() {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-surface-soft)]">
       <div className="px-2 pb-1.5 pt-1.5 sm:px-3 sm:pt-2">
         <div className="ui-surface px-3 py-2 sm:px-4 sm:py-2">
-          <div className="grid gap-2 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1fr)_auto] xl:items-start">
+          <div className="grid gap-2 xl:grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] xl:items-start">
             <div className="min-w-0">
               <div className="text-center text-sm font-semibold tracking-[0.14em] text-neutral-900 sm:text-left">
                 DOCUMENTATION MODE
@@ -3313,7 +3313,7 @@ export function PageB() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-start justify-center self-center gap-x-3 gap-y-2 xl:-translate-x-6 xl:pt-0.5">
+            <div className="flex flex-wrap items-start justify-center self-center justify-self-center gap-x-3 gap-y-2 xl:pt-0.5">
               {documentationModel.views.map((view) => {
                 const isActive = view.mode === activeView;
                 const helpLink =
@@ -3344,7 +3344,7 @@ export function PageB() {
               })}
             </div>
 
-            <div className="grid gap-1 justify-items-center xl:justify-items-end">
+            <div className="grid gap-1 justify-items-center xl:justify-items-end xl:justify-self-end">
               <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center xl:justify-end xl:text-right">
                 <button
                   className="text-[10px] font-normal text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
@@ -3352,6 +3352,14 @@ export function PageB() {
                 >
                   (Manif.)
                 </button>
+                <a
+                  className="text-[10px] font-normal text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
+                  href="/landing/aisync-landing.html"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Landing
+                </a>
                 {activeView === 'audit' ? (
                   <button
                     className="text-[10px] font-normal text-neutral-400 underline-offset-2 transition-colors hover:text-neutral-700 hover:underline"
