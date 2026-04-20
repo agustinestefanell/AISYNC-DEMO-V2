@@ -1272,6 +1272,69 @@ Recommended reduction or deferment:
 - no `lint` script
 - no `tests` script
 
+## 2026-04-20 - Contact Us page with Google Sheets endpoint wiring
+
+### What Changed
+
+A new `Contact Us` page was added as a lightweight institutional/contact surface inside the AISync shell.
+
+Route/page registration:
+- new page key: `I`
+- visible in the bottom ribbon as `Contact Us`
+- available by URL query: `?page=I`
+
+Files involved:
+- `src/pages/PageI.tsx`
+- `src/App.tsx`
+- `src/components/BottomNav.tsx`
+- `src/pageLabels.ts`
+- `src/types.ts`
+- `src/vite-env.d.ts`
+- `.env.example`
+
+### Form Contract
+
+Visible fields:
+- `Full name` required
+- `Work email` required
+- `Company / Organization` optional
+- `Role / Job title` optional
+- `Reason for contact` optional
+- `Message` required
+
+Submit payload:
+- `full_name`
+- `work_email`
+- `company`
+- `role`
+- `reason_for_contact`
+- `message`
+
+The endpoint is expected to add:
+- `submitted_at`
+- `status = new`
+
+### Integration Rule
+
+The frontend does not write directly to Google Sheets and does not contain credentials.
+
+The contact page posts to:
+- `import.meta.env.VITE_CONTACT_SHEET_ENDPOINT`
+
+This should be configured in Vercel with the Google Apps Script Web App URL.
+
+### Pending External Configuration
+
+The page is implemented and builds cleanly, but a real Google Sheets row cannot be verified until:
+- `VITE_CONTACT_SHEET_ENDPOINT` is configured with the deployed Apps Script endpoint
+- the Apps Script writes to the single target Sheet using the agreed columns
+
+### Validation
+
+- `npm run build` passing after Contact Us integration
+- no `lint` script
+- no `tests` script
+
 ## 2026-04-13 - Documentation Mode stabilization pack before GitHub push
 
 ### Current Branch Intent

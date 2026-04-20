@@ -1,4 +1,4 @@
-export type Page = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+export type Page = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I';
 export type SecondaryManagerPage = 'B' | 'C' | 'D' | 'E' | 'G';
 export type AgentRole = 'manager' | 'worker1' | 'worker2';
 export type MessageRole = 'user' | 'agent' | 'system';

@@ -356,6 +356,15 @@ export function BottomNav() {
               </div>
             )}
           </div>
+
+          <span className="hidden text-white/20 lg:block">|</span>
+
+          <NavButton
+            label="Contact Us"
+            active={state.currentPage === 'I'}
+            href={buildPageHref('I')}
+            onNavigate={() => navigateToPage('I')}
+          />
         </div>
 
         <div
@@ -465,6 +474,20 @@ export function BottomNav() {
                     {item.label}
                   </button>
                 ))}
+
+                <div className="border-b border-t border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                  Contact
+                </div>
+                <button
+                  data-mobile-menu-item="Contact Us"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/86 transition-colors hover:bg-white/8"
+                  onClick={() => navigateToPage('I')}
+                >
+                  <span>Contact Us</span>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-white/45">
+                    {state.currentPage === 'I' ? 'Current' : 'Contact'}
+                  </span>
+                </button>
               </div>
             </div>
           </div>

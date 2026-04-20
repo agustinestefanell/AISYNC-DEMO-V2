@@ -11,9 +11,10 @@ import { PageE } from './pages/PageE';
 import { PageF } from './pages/PageF';
 import { PageG } from './pages/PageG';
 import { PageH } from './pages/PageH';
+import { PageI } from './pages/PageI';
 import type { Page } from './types';
 
-const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']);
 
 function isVisibleElement(element: Element | null): element is HTMLElement {
   if (!(element instanceof HTMLElement)) {
@@ -191,6 +192,7 @@ function AppInner() {
         {state.currentPage === 'F' && <PageF />}
         {state.currentPage === 'G' && <PageG />}
         {state.currentPage === 'H' && <PageH />}
+        {state.currentPage === 'I' && <PageI />}
       </main>
       <BottomNav />
       <ResponsiveDiagnostics enabled={diagnosticsEnabled} currentPage={state.currentPage} />
