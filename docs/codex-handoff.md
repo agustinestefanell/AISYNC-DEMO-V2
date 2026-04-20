@@ -1335,6 +1335,59 @@ The page is implemented and builds cleanly, but a real Google Sheets row cannot 
 - no `lint` script
 - no `tests` script
 
+## 2026-04-20 - Chat-first preview page
+
+### What Changed
+
+A parallel visual preview page was added to evaluate a chat-first entry point for AISync without replacing the current workspace/home flow.
+
+New route:
+- `/chat-first-preview`
+
+Internal page key:
+- `J`
+
+Primary purpose:
+- visual/product evaluation only
+- no business logic replacement
+- no changes to existing workspace, Teams Map, Documentation Mode, Cross Verification, saves, or checkpoints
+
+### Access Rules
+
+Temporary accesses now point to this preview:
+- Landing `Live Demo`
+- Landing `See the live demo`
+- Landing `Explore the live demo`
+- Top-right username in `TopBar`
+
+No bottom navigation item was added for this preview.
+
+### Technical Notes
+
+Files involved:
+- `src/pages/PageJ.tsx`
+- `src/App.tsx`
+- `src/components/TopBar.tsx`
+- `src/pageLabels.ts`
+- `src/types.ts`
+- `public/landing/aisync-landing.html`
+- `vercel.json`
+
+`vercel.json` contains a minimal rewrite for `/chat-first-preview` to `/index.html` so the preview path can resolve as a SPA entry on Vercel.
+
+### Non-Regression Notes
+
+- Do not replace Page A / Main Workspace with this preview unless explicitly approved.
+- Keep the username access temporary and reversible.
+- Do not add the preview to the bottom nav unless explicitly requested.
+- Keep all visible text on the preview page in English.
+
+### Validation
+
+- `npm run build` passing after chat-first preview implementation
+- local preview server was not running during final verification, so no browser smoke was claimed
+- direct code verification confirmed landing demo CTAs now target `/chat-first-preview`
+
 ## 2026-04-13 - Documentation Mode stabilization pack before GitHub push
 
 ### Current Branch Intent

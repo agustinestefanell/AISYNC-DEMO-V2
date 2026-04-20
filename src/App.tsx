@@ -12,9 +12,10 @@ import { PageF } from './pages/PageF';
 import { PageG } from './pages/PageG';
 import { PageH } from './pages/PageH';
 import { PageI } from './pages/PageI';
+import { PageJ } from './pages/PageJ';
 import type { Page } from './types';
 
-const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']);
+const PAGE_SET = new Set<Page>(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
 
 function isVisibleElement(element: Element | null): element is HTMLElement {
   if (!(element instanceof HTMLElement)) {
@@ -155,7 +156,11 @@ function AppInner() {
     return new URLSearchParams(window.location.search);
   }, []);
   const diagnosticsEnabled = diagnosticsParams?.has('responsive_diag') ?? false;
-  const pageOverride = diagnosticsParams?.get('page');
+  const pathPageOverride =
+    typeof window !== 'undefined' && window.location.pathname === '/chat-first-preview'
+      ? 'J'
+      : null;
+  const pageOverride = pathPageOverride ?? diagnosticsParams?.get('page');
   const documentPageRequested = diagnosticsParams?.get('doc_page') === 'document';
 
   useEffect(() => {
@@ -193,6 +198,7 @@ function AppInner() {
         {state.currentPage === 'G' && <PageG />}
         {state.currentPage === 'H' && <PageH />}
         {state.currentPage === 'I' && <PageI />}
+        {state.currentPage === 'J' && <PageJ />}
       </main>
       <BottomNav />
       <ResponsiveDiagnostics enabled={diagnosticsEnabled} currentPage={state.currentPage} />

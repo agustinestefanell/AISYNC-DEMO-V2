@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/chat-first-preview",
+      "destination": "/index.html"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ export function getPageLabel(page: Page) {
   if (page === 'G') return 'Cross Verification';
   if (page === 'H') return 'Saved Chat Versions';
   if (page === 'I') return 'Contact Us';
+  if (page === 'J') return 'Chat-First Preview';
   return 'Secondary Workspace';
 }
 
@@ -46,6 +47,7 @@ export function getTopRibbonSectionNote(page: Page) {
   if (page === 'B') return 'what exists and how to consult it';
   if (page === 'C') return 'what happened';
   if (page === 'I') return 'send a message to AISync';
+  if (page === 'J') return 'preview entry point';
   return null;
 }
 
