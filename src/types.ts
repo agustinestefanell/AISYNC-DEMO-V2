@@ -635,6 +635,7 @@ export interface AuditAnswerPayload {
 
 export interface AppState {
   currentPage: Page;
+  workspaceEntryMode: 'demo' | 'chat-first';
   projectName: string;
   userName: string;
   messages: Record<string, Message[]>;

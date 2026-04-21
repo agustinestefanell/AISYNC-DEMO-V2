@@ -60,17 +60,25 @@ function NavButton({
   active,
   href,
   onNavigate,
+  subdued,
 }: {
   label: string;
   active?: boolean;
   href: string;
   onNavigate: () => void;
+  subdued?: boolean;
 }) {
   return (
     <a
       href={href}
       className={`ui-nav-button transition-colors ${
-        active ? 'text-white' : 'text-white/78 hover:text-white'
+        subdued
+          ? active
+            ? 'text-slate-900'
+            : 'text-slate-500 hover:text-slate-800'
+          : active
+            ? 'text-white'
+            : 'text-white/78 hover:text-white'
       }`}
       onClick={(event) => {
         if (
@@ -132,8 +140,15 @@ export function BottomNav() {
     setShowMobileMenu(false);
   };
 
+  const isPreviewEntryPoint = state.currentPage === 'J';
+  const separatorClassName = `hidden lg:block ${
+    isPreviewEntryPoint ? 'text-slate-300' : 'text-white/20'
+  }`;
+
   const ribbonColor =
-    state.currentPage === 'G'
+    isPreviewEntryPoint
+      ? '#f4f7fa'
+      : state.currentPage === 'G'
       ? getTeamTheme(CROSS_VERIFICATION_TEAM_ID).ribbon
       : state.currentPage === 'F' && state.secondaryWorkspace
         ? state.secondaryWorkspace.color
@@ -229,7 +244,11 @@ export function BottomNav() {
   return (
     <>
       <nav
-        className="ui-bottomnav relative shrink-0 px-2 text-white sm:px-4"
+        className={`ui-bottomnav relative shrink-0 px-2 sm:px-4 ${
+          isPreviewEntryPoint
+            ? 'border-t border-slate-200/80 text-slate-600 shadow-none'
+            : 'text-white'
+        }`}
         style={{ backgroundColor: ribbonColor }}
       >
         <div
@@ -242,70 +261,79 @@ export function BottomNav() {
             active={state.currentPage === 'D'}
             href={buildPageHref('D')}
             onNavigate={() => navigateToPage('D')}
+            subdued={isPreviewEntryPoint}
           />
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Audit Log"
             active={state.currentPage === 'C'}
             href={buildPageHref('C')}
             onNavigate={() => navigateToPage('C')}
+            subdued={isPreviewEntryPoint}
           />
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Main Workspace"
             active={state.currentPage === 'A'}
             href={buildPageHref('A')}
             onNavigate={() => navigateToPage('A')}
+            subdued={isPreviewEntryPoint}
           />
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Cross Verification"
             active={isCrossVerificationActive}
             href={buildPageHref('G')}
             onNavigate={navigateToCrossVerification}
+            subdued={isPreviewEntryPoint}
           />
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Documentation Mode"
             active={state.currentPage === 'B'}
             href={buildPageHref('B')}
             onNavigate={() => navigateToPage('B')}
+            subdued={isPreviewEntryPoint}
           />
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Prompts Library"
             active={state.currentPage === 'E'}
             href={buildPageHref('E')}
             onNavigate={() => navigateToPage('E')}
+            subdued={isPreviewEntryPoint}
           />
 
           {secondaryWorkspaceNavItem && (
             <>
-              <span className="hidden text-white/20 lg:block">|</span>
+              <span className={separatorClassName}>|</span>
               <NavButton
                 label="Secondary Workspace"
                 active={state.currentPage === 'F' && !isCrossVerificationActive}
                 href={buildPageHref('F')}
                 onNavigate={() => navigateToPage('F')}
+                subdued={isPreviewEntryPoint}
               />
             </>
           )}
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <div className="relative">
             <button
-              className="ui-nav-button text-white/78 transition-colors hover:text-white"
+              className={`ui-nav-button transition-colors ${
+                isPreviewEntryPoint ? 'text-slate-500 hover:text-slate-800' : 'text-white/78 hover:text-white'
+              }`}
               onClick={() => {
                 setShowSettings((value) => !value);
                 setShowAdvanced(false);
@@ -329,11 +357,13 @@ export function BottomNav() {
             )}
           </div>
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <div className="relative">
             <button
-              className="ui-nav-button text-white/78 transition-colors hover:text-white"
+              className={`ui-nav-button transition-colors ${
+                isPreviewEntryPoint ? 'text-slate-500 hover:text-slate-800' : 'text-white/78 hover:text-white'
+              }`}
               onClick={() => {
                 setShowAdvanced((value) => !value);
                 setShowSettings(false);
@@ -357,13 +387,14 @@ export function BottomNav() {
             )}
           </div>
 
-          <span className="hidden text-white/20 lg:block">|</span>
+          <span className={separatorClassName}>|</span>
 
           <NavButton
             label="Contact Us"
             active={state.currentPage === 'I'}
             href={buildPageHref('I')}
             onNavigate={() => navigateToPage('I')}
+            subdued={isPreviewEntryPoint}
           />
         </div>
 
@@ -373,10 +404,18 @@ export function BottomNav() {
           }`}
         >
           <div className="min-w-0 px-2">
-            <div className="ui-bottomnav-current-label truncate text-[10px] uppercase tracking-[0.16em] text-white/45">
+            <div
+              className={`ui-bottomnav-current-label truncate text-[10px] uppercase tracking-[0.16em] ${
+                isPreviewEntryPoint ? 'text-slate-400' : 'text-white/45'
+              }`}
+            >
               Navigation
             </div>
-            <div className="ui-bottomnav-current-page truncate text-sm font-medium text-white">
+            <div
+              className={`ui-bottomnav-current-page truncate text-sm font-medium ${
+                isPreviewEntryPoint ? 'text-slate-700' : 'text-white'
+              }`}
+            >
               {currentPageLabel}
             </div>
           </div>
@@ -385,7 +424,11 @@ export function BottomNav() {
             data-mobile-menu-button
             aria-controls="mobile-navigation-sheet"
             aria-expanded={showMobileMenu}
-            className="ui-bottomnav-menu-button inline-flex min-h-11 items-center gap-2 rounded-full border border-white/12 bg-white/10 px-4 text-xs font-semibold tracking-[0.14em] text-white transition-colors hover:bg-white/16"
+            className={`ui-bottomnav-menu-button inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-semibold tracking-[0.14em] transition-colors ${
+              isPreviewEntryPoint
+                ? 'border border-slate-200 bg-white/70 text-slate-600 hover:bg-white'
+                : 'border border-white/12 bg-white/10 text-white hover:bg-white/16'
+            }`}
             onClick={() => {
               setShowMobileMenu((value) => !value);
               setShowSettings(false);

@@ -61,6 +61,7 @@ function mergeDefinedRecord<T>(base: Record<string, T>, incoming?: Partial<Recor
 
 type Action =
   | { type: 'SET_PAGE'; page: Page }
+  | { type: 'START_CHAT_FIRST_WORKSPACE'; userMessage: Message; managerMessage: Message }
   | { type: 'SET_DOCUMENTATION_ROOT'; root: DocumentationRepositoryRoot }
   | { type: 'SET_WORKSPACE_FOCUS'; agent: AgentRole | null }
   | { type: 'SET_SECONDARY_WORKSPACE'; workspace: SecondaryWorkspaceTarget | null }
@@ -87,6 +88,7 @@ type Action =
   | { type: 'SAVE_WORKER_CONFIG'; config: WorkerConfig };
 
 interface PersistedState {
+  workspaceEntryMode?: AppState['workspaceEntryMode'];
   projectName?: string;
   userName?: string;
   documentationRoot?: DocumentationRepositoryRoot;
@@ -113,6 +115,7 @@ function buildSeedState(): AppState {
   const now = new Date().toISOString();
   return {
     currentPage: 'D',
+    workspaceEntryMode: 'demo',
     projectName: 'AISync Demo Project',
     userName: 'Agustin E.',
     messages: {
@@ -303,6 +306,7 @@ function resolvePersistedState(parsed: PersistedState, seed: AppState) {
 
   return {
     projectName: parsed.projectName ?? seed.projectName,
+    workspaceEntryMode: parsed.workspaceEntryMode ?? seed.workspaceEntryMode,
     userName: resolvedUserName,
     documentationRoot: parsed.documentationRoot ?? seed.documentationRoot,
     messages: mergeDefinedRecord(seed.messages, parsed.messages),
@@ -337,6 +341,45 @@ function reducer(state: AppState, action: Action): AppState {
         currentPage: action.page,
         selectedWorkspaceVersion:
           action.page === 'H' ? state.selectedWorkspaceVersion : null,
+      };
+    case 'START_CHAT_FIRST_WORKSPACE':
+      return {
+        ...state,
+        currentPage: 'A',
+        workspaceEntryMode: 'chat-first',
+        messages: {
+          ...state.messages,
+          manager: [action.userMessage, action.managerMessage],
+          worker1: [],
+          worker2: [],
+        },
+        selectedMessages: {
+          ...state.selectedMessages,
+          manager: [],
+          worker1: [],
+          worker2: [],
+        },
+        drafts: {
+          ...state.drafts,
+          manager: '',
+          worker1: '',
+          worker2: '',
+        },
+        documentLocks: {
+          ...state.documentLocks,
+          manager: false,
+          worker1: false,
+          worker2: false,
+        },
+        workspaceVersions: {
+          ...state.workspaceVersions,
+          manager: [],
+          worker1: [],
+          worker2: [],
+        },
+        workspaceFocusAgent: 'manager',
+        secondaryWorkspace: null,
+        selectedWorkspaceVersion: null,
       };
     case 'SET_DOCUMENTATION_ROOT':
       return {
@@ -548,6 +591,7 @@ function reducer(state: AppState, action: Action): AppState {
 
 function serializeState(state: AppState): PersistedState {
   return {
+    workspaceEntryMode: state.workspaceEntryMode,
     projectName: state.projectName,
     userName: state.userName,
     documentationRoot: state.documentationRoot,

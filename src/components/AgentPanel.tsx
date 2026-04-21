@@ -35,24 +35,6 @@ const PANEL_NAMES: Record<AgentRole, string> = {
   worker2: 'Worker 2',
 };
 
-const STUB_REPLIES: Record<AgentRole, string[]> = {
-  manager: [
-    'Coordination noted. I will structure the next step and assign it to the right worker.',
-    'I have enough context. Converting this into a clean execution brief now.',
-    'Received. I will keep the workflow simple and route only the required context.',
-  ],
-  worker1: [
-    'Task accepted. I am producing the technical output with the current constraints in mind.',
-    'Understood. I am validating the request and turning it into an execution-ready answer.',
-    'Confirmed. I will return a concise technical response without expanding scope.',
-  ],
-  worker2: [
-    'Received. I am translating the input into a clear, user-facing summary.',
-    'Confirmed. I will synthesize the request and return a clean draft.',
-    'Working on it. I will keep the answer structured and easy to reuse.',
-  ],
-};
-
 function createMessageId() {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -82,6 +64,20 @@ function buildForwardedContent(messages: Message[], sourceLabel: string) {
     .join('\n\n');
 
   return `REVIEWED & FORWARDED FROM ${sourceLabel}\n\n${body}`;
+}
+
+function buildDemoReply(agent: AgentRole, sourceContent: string) {
+  const compactContext = sourceContent.replace(/\s+/g, ' ').trim().slice(0, 180);
+
+  if (agent === 'manager') {
+    return `I understand. I will keep this moving as an operating path.\n\nInitial path: clarify the expected outcome, define the next action, and prepare a short brief that can be forwarded to the right worker when execution or documentation support is needed.\n\nCurrent focus: ${compactContext}`;
+  }
+
+  if (agent === 'worker1') {
+    return `Worker 1 received the handoff. I will treat this as an execution task.\n\nOperational next step: validate the structure, break the request into usable components, and identify what can be executed first without expanding scope.`;
+  }
+
+  return `Worker 2 received the handoff. I will treat this as documentation and synthesis support.\n\nReusable output: I will summarize the instruction, preserve the relevant context, and turn it into clear guidance that can be reused later.`;
 }
 
 export interface AgentPanelProps {
@@ -244,7 +240,9 @@ export function AgentPanel({
       return;
     }
 
-    if (!draft.trim()) {
+    const normalizedDraft = draft.trim();
+
+    if (!normalizedDraft) {
       return;
     }
 
@@ -255,7 +253,7 @@ export function AgentPanel({
       message: {
         id: createMessageId(),
         role: 'user',
-        content: draft.trim(),
+        content: normalizedDraft,
         timestamp: getNowTime(),
         agent,
         senderLabel: 'User',
@@ -264,8 +262,6 @@ export function AgentPanel({
     dispatch({ type: 'SET_DRAFT', agent, value: '', panelScope: resolvedPanelScope });
 
     window.setTimeout(() => {
-      const replyBank = STUB_REPLIES[agent];
-      const reply = replyBank[Math.floor(Math.random() * replyBank.length)];
       dispatch({
         type: 'ADD_MESSAGE',
         agent,
@@ -273,7 +269,7 @@ export function AgentPanel({
         message: {
           id: createMessageId(),
           role: 'agent',
-          content: reply,
+          content: buildDemoReply(agent, normalizedDraft),
           timestamp: getNowTime(),
           agent,
           senderLabel: MODEL_LABELS[agent],
@@ -319,23 +315,53 @@ export function AgentPanel({
     };
 
     if (target.kind === 'main-worker' && target.agentRole) {
+      const targetAgent = target.agentRole;
       dispatch({
         type: 'ADD_MESSAGE',
-        agent: target.agentRole,
+        agent: targetAgent,
         message: {
           ...forwardedMessage,
-          agent: target.agentRole,
+          agent: targetAgent,
         },
       });
+      window.setTimeout(() => {
+        dispatch({
+          type: 'ADD_MESSAGE',
+          agent: targetAgent,
+          message: {
+            id: createMessageId(),
+            role: 'agent',
+            content: buildDemoReply(targetAgent, forwardedContent),
+            timestamp: getNowTime(),
+            agent: targetAgent,
+            senderLabel: MODEL_LABELS[targetAgent],
+          },
+        });
+      }, 700);
     } else if (target.kind === 'general-manager' && target.agentRole) {
+      const targetAgent = target.agentRole;
       dispatch({
         type: 'ADD_MESSAGE',
-        agent: target.agentRole,
+        agent: targetAgent,
         message: {
           ...forwardedMessage,
-          agent: target.agentRole,
+          agent: targetAgent,
         },
       });
+      window.setTimeout(() => {
+        dispatch({
+          type: 'ADD_MESSAGE',
+          agent: targetAgent,
+          message: {
+            id: createMessageId(),
+            role: 'agent',
+            content: buildDemoReply(targetAgent, forwardedContent),
+            timestamp: getNowTime(),
+            agent: targetAgent,
+            senderLabel: MODEL_LABELS[targetAgent],
+          },
+        });
+      }, 700);
     } else if (target.kind === 'team-sub-manager' && target.teamId) {
       appendMessageToTeamManagerThread(target.teamId, {
         id: forwardedMessage.id,
