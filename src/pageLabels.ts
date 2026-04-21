@@ -44,10 +44,7 @@ export function getTopRibbonSectionLabel(page: Page, secondaryWorkspaceLabel?: s
 }
 
 export function getTopRibbonSectionNote(page: Page) {
-  if (page === 'B') return 'what exists and how to consult it';
-  if (page === 'C') return 'what happened';
   if (page === 'I') return 'send a message to AISync';
-  if (page === 'J') return 'preview entry point';
   return null;
 }
 

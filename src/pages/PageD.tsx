@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AgentPanel } from '../components/AgentPanel';
 import { CollapsibleManagerSidebar } from '../components/CollapsibleManagerSidebar';
+import { HowToLink, HowToModal, type HowToTopic } from '../components/HowToModal';
 import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
 import { useApp } from '../context';
@@ -1917,6 +1918,7 @@ export function PageD() {
   const [addTeamSavingTag, setAddTeamSavingTag] = useState('');
   const [toast, setToast] = useState('');
   const [viewMode, setViewMode] = useState<TeamsViewMode>('map');
+  const [activeHowTo, setActiveHowTo] = useState<HowToTopic | null>(null);
   const [zoomInSignal, setZoomInSignal] = useState(0);
   const [zoomOutSignal, setZoomOutSignal] = useState(0);
   const [resetSignal, setResetSignal] = useState(0);
@@ -2460,7 +2462,7 @@ export function PageD() {
       <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         <section className="flex min-h-full flex-col gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
           <div
-            className="ui-surface flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+            className="ui-surface grid items-center gap-3 px-4 py-3 md:grid-cols-[auto_minmax(220px,1fr)_auto]"
             style={{
               borderColor: 'rgba(15, 23, 42, 0.12)',
               background:
@@ -2469,13 +2471,24 @@ export function PageD() {
                 'inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 26px rgba(15,23,42,0.06)',
             }}
           >
-            <div>
+            <div className="min-w-0">
               <h1 className="ui-title text-[20px] uppercase tracking-[0.12em]">Teams Map</h1>
               <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-neutral-600">
                 Operational Elasticity View
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-col items-start gap-0.5 text-[11px] leading-4">
+              <HowToLink onClick={() => setActiveHowTo('teams-map')}>
+                How to use Teams Map
+              </HowToLink>
+              <HowToLink onClick={() => setActiveHowTo('create-teams')}>
+                How to create Teams
+              </HowToLink>
+              <HowToLink onClick={() => setActiveHowTo('team-types')}>
+                Two very different kinds of teams
+              </HowToLink>
+            </div>
+            <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
               <div
                 className="rounded-full border p-1"
                 style={{
@@ -2983,6 +2996,7 @@ export function PageD() {
       )}
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
+      {activeHowTo ? <HowToModal topic={activeHowTo} onClose={() => setActiveHowTo(null)} /> : null}
     </div>
   );
 }

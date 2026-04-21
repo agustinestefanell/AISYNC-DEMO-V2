@@ -90,13 +90,17 @@ export function PageJ() {
           <div className="flex h-full min-h-0 flex-col px-5 py-5 sm:px-8 lg:px-10">
             <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col">
               <div className="shrink-0 pt-1">
-                <h1 className="whitespace-nowrap text-[clamp(1.35rem,2.05vw,2.35rem)] font-semibold leading-tight tracking-[-0.035em] text-neutral-950">
-                  Start your project with the General Manager
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-neutral-600 sm:text-base">
-                  The General Manager is the right place to begin because it helps define the work,
-                  organize the next steps, and bring the team in when the project needs more support.
-                </p>
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-5">
+                  <div className="min-w-0">
+                    <h1 className="whitespace-nowrap text-[clamp(1.35rem,2.05vw,2.35rem)] font-semibold leading-tight tracking-[-0.035em] text-neutral-950">
+                      Start your project with the General Manager
+                    </h1>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-neutral-600 sm:text-base">
+                      The General Manager is the right place to begin because it helps define the work,
+                      organize the next steps, and bring the team in when the project needs more support.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-5 flex min-h-0 flex-1 flex-col rounded-[18px] border border-neutral-200 bg-white p-3 shadow-xl shadow-slate-900/10">
