@@ -358,6 +358,7 @@ function CanvasViewport({
   zoomOutSignal,
   resetSignal,
   contentWidthClass,
+  overlay,
   children,
 }: {
   initialZoom: number;
@@ -370,6 +371,7 @@ function CanvasViewport({
   zoomOutSignal?: number;
   resetSignal?: number;
   contentWidthClass: string;
+  overlay?: ReactNode;
   children: ReactNode;
 }) {
   const [zoom, setZoom] = useState(initialZoom);
@@ -674,6 +676,11 @@ function CanvasViewport({
             {children}
           </div>
         </div>
+        {overlay ? (
+          <div className="pointer-events-none absolute inset-0 z-20">
+            {overlay}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1376,6 +1383,7 @@ function TreeStructureView({
   onStartInlineRename,
   onCommitInlineRename,
   onCancelInlineRename,
+  onOpenTeamTypesHelp,
   zoomInSignal,
   zoomOutSignal,
   resetSignal,
@@ -1395,6 +1403,7 @@ function TreeStructureView({
   onStartInlineRename: (node: TeamsGraphNode) => void;
   onCommitInlineRename: (nodeId: string, rawValue: string) => void;
   onCancelInlineRename: () => void;
+  onOpenTeamTypesHelp: () => void;
   zoomInSignal: number;
   zoomOutSignal: number;
   resetSignal: number;
@@ -1435,6 +1444,19 @@ function TreeStructureView({
       zoomOutSignal={zoomOutSignal}
       resetSignal={resetSignal}
       contentWidthClass="inline-flex w-max flex-col items-center"
+      overlay={
+        <div
+          className="pointer-events-auto absolute right-10 top-7 text-left text-[13px] font-normal leading-6 text-neutral-600"
+          data-pan-block="true"
+          data-viewport-block="true"
+        >
+          <div>SAT = Single Agent Team</div>
+          <div>MAT = Multiple Agent Team</div>
+          <HowToLink className="mt-1 text-[12px]" onClick={onOpenTeamTypesHelp}>
+            Differences and uses
+          </HowToLink>
+        </div>
+      }
     >
       <div className="flex flex-col items-center gap-6 pb-4">
         <div
@@ -2515,9 +2537,6 @@ export function PageD() {
               <HowToLink onClick={() => setActiveHowTo('create-teams')}>
                 How to create Teams
               </HowToLink>
-              <HowToLink onClick={() => setActiveHowTo('team-types')}>
-                SAT/MAT Teams: difference and uses
-              </HowToLink>
             </div>
             <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
               <div
@@ -2613,6 +2632,7 @@ export function PageD() {
                 onStartInlineRename={startInlineRename}
                 onCommitInlineRename={commitInlineRename}
                 onCancelInlineRename={cancelInlineRename}
+                onOpenTeamTypesHelp={() => setActiveHowTo('team-types')}
                 zoomInSignal={zoomInSignal}
                 zoomOutSignal={zoomOutSignal}
                 resetSignal={resetSignal}
