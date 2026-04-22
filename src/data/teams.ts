@@ -89,6 +89,7 @@ function buildCrossVerificationTeamSeed() {
         provider: 'OpenAI' as AIProvider,
         parentId: 'gm_1',
         teamId: CROSS_VERIFICATION_TEAM_ID,
+        teamType: 'MAT' as const,
         phaseState: 'In Review' as WorkPhaseState,
       },
       {
@@ -98,6 +99,7 @@ function buildCrossVerificationTeamSeed() {
         provider: 'Anthropic' as AIProvider,
         parentId: managerId,
         teamId: CROSS_VERIFICATION_TEAM_ID,
+        teamType: 'MAT' as const,
       },
       {
         id: `${CROSS_VERIFICATION_TEAM_ID}_worker_2`,
@@ -106,6 +108,7 @@ function buildCrossVerificationTeamSeed() {
         provider: 'Google' as AIProvider,
         parentId: managerId,
         teamId: CROSS_VERIFICATION_TEAM_ID,
+        teamType: 'MAT' as const,
       },
     ],
     folders: buildFolderSeed(CROSS_VERIFICATION_TEAM_ID, 'Cross Verification'),
@@ -327,6 +330,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
       provider: 'OpenAI',
       parentId: null,
       teamId: 'global',
+      teamType: 'MAT',
     },
   ];
 
@@ -341,6 +345,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
       provider: team.provider,
       parentId: 'gm_1',
       teamId: team.teamId,
+      teamType: 'MAT',
       phaseState: getDefaultTeamPhaseState(team.teamId),
     });
 
@@ -352,6 +357,7 @@ export function createSeedTeamsMapState(): TeamsMapState {
         provider: PROVIDERS[(teamIndex + workerIndex) % PROVIDERS.length],
         parentId: `${team.teamId}_sm`,
         teamId: team.teamId,
+        teamType: 'MAT',
       });
     });
 
@@ -390,6 +396,7 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
     provider: clientManager?.provider || clientWorkers[0]?.provider || 'Google',
     parentId: 'gm_1',
     teamId: 'team_clients',
+    teamType: clientManager?.teamType ?? 'MAT',
     phaseState: clientManager?.phaseState ?? getDefaultTeamPhaseState('team_clients'),
   };
   const clientWorkerDefinitions = [
@@ -406,6 +413,7 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
         existingWorker?.provider || clientWorkers[0]?.provider || definition.fallbackProvider,
       parentId: clientManagerId,
       teamId: 'team_clients',
+      teamType: existingWorker?.teamType ?? clientManagerNode.teamType,
     };
   });
 
@@ -429,7 +437,70 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
       withDefaultTeamPhaseState,
     ),
   ];
-  const topLevelNodes = normalizedNodes.filter((node) => node.parentId === 'gm_1');
+  const teamTypeByTeam = normalizedNodes.reduce<Record<string, 'SAT' | 'MAT'>>((accumulator, node) => {
+    if (!node.teamId || node.teamId === 'global') {
+      return accumulator;
+    }
+
+    accumulator[node.teamId] = node.teamType ?? accumulator[node.teamId] ?? 'MAT';
+    return accumulator;
+  }, {});
+  const normalizedNodesWithTeamType = normalizedNodes.map((node) => ({
+    ...node,
+    teamType: node.teamType ?? teamTypeByTeam[node.teamId] ?? (node.teamId === 'global' ? 'MAT' : 'MAT'),
+  }));
+  const satLeadById = normalizedNodesWithTeamType.reduce<Record<string, TeamsGraphNode>>((accumulator, node) => {
+    if (node.type === 'senior_manager' && node.teamType === 'SAT') {
+      accumulator[node.id] = node;
+    }
+
+    return accumulator;
+  }, {});
+  const normalizedNodesWithSatBranches = normalizedNodesWithTeamType.map((node) => {
+    const satLead = node.parentId ? satLeadById[node.parentId] : null;
+
+    if (satLead && node.type === 'worker') {
+      return {
+        ...node,
+        provider: satLead.provider,
+        teamType: 'SAT' as const,
+      };
+    }
+
+    return node;
+  });
+  const existingNodeIds = new Set(normalizedNodesWithSatBranches.map((node) => node.id));
+
+  normalizedNodesWithTeamType
+    .filter((node) => node.type === 'senior_manager' && node.teamType === 'SAT')
+    .forEach((leadNode) => {
+      const existingWorkers = normalizedNodesWithSatBranches.filter(
+        (node) => node.parentId === leadNode.id && node.type === 'worker',
+      );
+
+      for (let index = existingWorkers.length; index < 2; index += 1) {
+        const baseId = `${leadNode.teamId}_sat_worker_${index + 1}`;
+        let workerId = baseId;
+        let suffix = 1;
+
+        while (existingNodeIds.has(workerId)) {
+          workerId = `${baseId}_${suffix}`;
+          suffix += 1;
+        }
+
+        existingNodeIds.add(workerId);
+        normalizedNodesWithSatBranches.push({
+          id: workerId,
+          type: 'worker',
+          label: createWorkerLabel(leadNode.teamId, index + 1),
+          provider: leadNode.provider,
+          parentId: leadNode.id,
+          teamId: leadNode.teamId,
+          teamType: 'SAT',
+        });
+      }
+    });
+  const topLevelNodes = normalizedNodesWithSatBranches.filter((node) => node.parentId === 'gm_1');
   const normalizedTeamSettings = Object.fromEntries(
     topLevelNodes.map((node) => {
       const savedSettings = input.teamSettingsByTeam?.[node.teamId];
@@ -449,7 +520,7 @@ export function normalizeTeamsMapState(input: TeamsMapState): TeamsMapState {
   return {
     foldersByTeam: normalizedFoldersByTeam,
     teamSettingsByTeam: normalizedTeamSettings,
-    teamsGraph: normalizedNodes,
+    teamsGraph: normalizedNodesWithSatBranches,
   };
 }
 

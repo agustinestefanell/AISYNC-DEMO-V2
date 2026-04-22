@@ -7,7 +7,6 @@ import { Toast } from '../components/Toast';
 import { useApp } from '../context';
 import {
   CROSS_VERIFICATION_TEAM_ID,
-  DOCUMENTATION_SAVING_DEFAULTS,
   PROVIDERS,
   buildFolderSeed,
   countArtifacts,
@@ -21,11 +20,10 @@ import {
   getTopLevelUnits,
   getWorkspaceAgentForTeam,
   saveTeamsMapState,
-  type DocumentationSavingDefault,
   type TeamsMapState,
 } from '../data/teams';
 import { openTeamWorkspaceWindow } from '../teamWorkspaceLaunch';
-import type { AIProvider, TeamsGraphNode } from '../types';
+import type { AIProvider, TeamType, TeamsGraphNode } from '../types';
 import { getSecondarySubManagerLabel } from '../pageLabels';
 
 type TeamsViewMode = 'map' | 'tree';
@@ -121,12 +119,6 @@ function TreeAddUserTeamAnchor({ onClick }: { onClick: () => void }) {
       </button>
     </div>
   );
-}
-
-function getSavingDefaultShortLabel(value: DocumentationSavingDefault) {
-  if (value === 'Documentation Mode') return 'Docs Mode';
-  if (value === 'Team Workspace') return 'Team Save';
-  return 'Audit Log';
 }
 
 function padDocumentIndex(value: number) {
@@ -284,9 +276,6 @@ function getMapCardDetails({
 }) {
   const narrative = getMapTeamNarrative(node.teamId);
   const providerLabel = getProviderDisplayName(node.provider);
-  const savingLabel = getSavingDefaultShortLabel(
-    teamSettings?.documentationSavingDefault ?? 'Documentation Mode',
-  );
   const teamTag = teamSettings?.savingTag ?? 'TEAM';
 
   if (node.type === 'senior_manager') {
@@ -704,6 +693,7 @@ function TreeWorkspaceCard({
   metrics,
   compact,
   outlineOnly,
+  isSat,
   actionLabel,
   secondaryActionLabel,
   onPrimaryAction,
@@ -722,6 +712,7 @@ function TreeWorkspaceCard({
   metrics: MapCardMetric[];
   compact?: boolean;
   outlineOnly?: boolean;
+  isSat?: boolean;
   actionLabel: string;
   secondaryActionLabel?: string;
   onPrimaryAction: () => void;
@@ -739,7 +730,7 @@ function TreeWorkspaceCard({
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-[18px] border text-left shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-[1px]"
+      className="relative flex h-full flex-col overflow-hidden rounded-[18px] border text-left shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-[1px]"
       style={{
         width: `${cardWidth}px`,
         minWidth: `${cardWidth}px`,
@@ -747,10 +738,22 @@ function TreeWorkspaceCard({
         background: cardBackground,
         boxShadow:
           compact
-            ? '0 10px 20px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255,255,255,0.72)'
-            : '0 14px 30px rgba(15, 23, 42, 0.09), inset 0 1px 0 rgba(255,255,255,0.8)',
+          ? '0 10px 20px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255,255,255,0.72)'
+          : '0 14px 30px rgba(15, 23, 42, 0.09), inset 0 1px 0 rgba(255,255,255,0.8)',
       }}
     >
+      {isSat ? (
+        <div
+          className="absolute right-3 top-3 z-10 rounded-[7px] border px-2 py-1 text-[9px] font-semibold leading-none text-neutral-700"
+          style={{
+            borderColor: 'rgba(15, 23, 42, 0.18)',
+            background: 'rgba(255,255,255,0.96)',
+            boxShadow: '0 3px 8px rgba(15,23,42,0.1)',
+          }}
+        >
+          SAT
+        </div>
+      ) : null}
       <div
         className="shrink-0 px-4 py-3"
         style={{
@@ -1699,6 +1702,7 @@ function TreeStructureView({
                   metrics={cardDetails.metrics}
                   compact={cardDetails.compact && childCount === 0}
                   outlineOnly={cardDetails.outlineOnly}
+                  isSat={node.teamType === 'SAT'}
                   actionLabel={cardDetails.actionLabel}
                   secondaryActionLabel={cardDetails.secondaryActionLabel}
                   onPrimaryAction={() => onOpenWorkspace(node)}
@@ -1827,10 +1831,11 @@ function TreeOverviewView({
                 )} 32%, rgba(255,255,255,0.97) 32%, rgba(255,255,255,0.97) 100%)`;
             const boxColor = isManagerFamilyNode ? theme.ribbon : theme.accent;
             const boxBorder = isManagerFamilyNode ? theme.border : getFamilyColor(theme.accent, 0.28);
+            const isSatNode = node.teamType === 'SAT';
 
             return (
               <div
-                className={`flex h-full w-full flex-col items-center justify-center overflow-hidden text-center shadow-[var(--shadow-soft)] ${
+                className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden text-center shadow-[var(--shadow-soft)] ${
                   isManagerFamilyNode ? 'rounded-[18px]' : 'rounded-[16px]'
                 }`}
                 style={{
@@ -1844,6 +1849,18 @@ function TreeOverviewView({
                     : `0 8px 18px rgba(15,23,42,0.07), inset 0 3px 0 ${theme.accent}, inset 0 1px 0 rgba(255,255,255,0.75)`,
                 }}
               >
+                {isSatNode ? (
+                  <div
+                    className="absolute right-1.5 top-1.5 rounded-[7px] border px-1.5 py-0.5 text-[8px] font-semibold leading-none text-neutral-700"
+                    style={{
+                      borderColor: 'rgba(15, 23, 42, 0.16)',
+                      background: 'rgba(255,255,255,0.96)',
+                      boxShadow: '0 2px 6px rgba(15,23,42,0.08)',
+                    }}
+                  >
+                    SAT
+                  </div>
+                ) : null}
                 <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 px-2 py-2">
                   <div
                     className="rounded-full px-2 py-1 text-[8px] uppercase tracking-[0.14em]"
@@ -1910,11 +1927,15 @@ export function PageD() {
   const [draftProvider, setDraftProvider] = useState<AIProvider>('OpenAI');
   const [draftAgentLabel, setDraftAgentLabel] = useState('');
   const [draftAgentProvider, setDraftAgentProvider] = useState<AIProvider>('OpenAI');
-  const [draftSavingDefault, setDraftSavingDefault] = useState<DocumentationSavingDefault>('Documentation Mode');
   const [draftSavingTag, setDraftSavingTag] = useState('');
   const [addTeamName, setAddTeamName] = useState('');
+  const [addTeamType, setAddTeamType] = useState<TeamType>('SAT');
   const [addTeamProvider, setAddTeamProvider] = useState<AIProvider>('OpenAI');
-  const [addTeamSavingDefault, setAddTeamSavingDefault] = useState<DocumentationSavingDefault>('Documentation Mode');
+  const [addTeamWorkerProviders, setAddTeamWorkerProviders] = useState<AIProvider[]>([
+    'OpenAI',
+    'Anthropic',
+    'Google',
+  ]);
   const [addTeamSavingTag, setAddTeamSavingTag] = useState('');
   const [toast, setToast] = useState('');
   const [viewMode, setViewMode] = useState<TeamsViewMode>('map');
@@ -1926,10 +1947,11 @@ export function PageD() {
   const [promotionNamingDraft, setPromotionNamingDraft] = useState<null | {
     promotedAgentId: string;
     teamId: string;
+    teamType: TeamType;
     smIndex: string;
-    subManagerSuffix: string;
-    worker1Suffix: string;
-    worker2Suffix: string;
+    teamName: string;
+    agentProvider: AIProvider;
+    workerProviders: AIProvider[];
   }>(null);
 
   useEffect(() => {
@@ -1984,7 +2006,6 @@ export function PageD() {
     setDraftLabel(selectedNode.label);
     setDraftProvider(selectedNode.provider);
     const teamSettings = teamsState.teamSettingsByTeam[selectedNode.teamId];
-    setDraftSavingDefault(teamSettings?.documentationSavingDefault ?? 'Documentation Mode');
     setDraftSavingTag(teamSettings?.savingTag ?? '');
   }, [selectedNode, teamsState.teamSettingsByTeam]);
 
@@ -2039,6 +2060,7 @@ export function PageD() {
     [selectedFamilyLead, teamsState.teamsGraph],
   );
   const selectedTeamLead = selectedFamilyLead ?? selectedNode;
+  const selectedTeamType = selectedFamilyLead?.teamType ?? selectedNode?.teamType ?? 'MAT';
   const teamAgents = selectedTeamMembers.filter((node) => node.id !== selectedTeamLead?.id);
   const manageableAgents = selectedTeamMembers;
   const selectedAgent =
@@ -2084,8 +2106,9 @@ export function PageD() {
 
   const openAddUserTeamModal = () => {
     setAddTeamName('');
+    setAddTeamType('SAT');
     setAddTeamProvider('OpenAI');
-    setAddTeamSavingDefault('Documentation Mode');
+    setAddTeamWorkerProviders(['OpenAI', 'Anthropic', 'Google']);
     setAddTeamSavingTag('');
     setShowAddTeamModal(true);
   };
@@ -2118,7 +2141,8 @@ export function PageD() {
       teamSettingsByTeam: {
         ...current.teamSettingsByTeam,
         [selectedNode.teamId]: {
-          documentationSavingDefault: draftSavingDefault,
+          documentationSavingDefault:
+            current.teamSettingsByTeam[selectedNode.teamId]?.documentationSavingDefault ?? 'Documentation Mode',
           savingTag: draftSavingTag.trim().toUpperCase() || current.teamSettingsByTeam[selectedNode.teamId]?.savingTag || 'TEAM',
         },
       },
@@ -2147,28 +2171,29 @@ export function PageD() {
       return;
     }
 
-    if (!savingTag) {
-      setToast('Enter a saving tag first.');
-      return;
-    }
-
+    const teamLeadProvider = addTeamType === 'SAT' ? addTeamProvider : addTeamWorkerProviders[0];
+    const workerCount = addTeamType === 'SAT' ? 2 : 3;
+    const workerNodes: TeamsGraphNode[] =
+      Array.from({ length: workerCount }, (_, index) => ({
+        id: `${teamId}_worker_${index + 1}`,
+        type: 'worker' as const,
+        label: createWorkerLabel(teamId, index + 1),
+        provider: addTeamType === 'SAT' ? addTeamProvider : addTeamWorkerProviders[index],
+        parentId: managerId,
+        teamId,
+        teamType: addTeamType,
+      }));
     const newNodes: TeamsGraphNode[] = [
       {
         id: managerId,
         type: 'senior_manager',
         label,
-        provider: addTeamProvider,
+        provider: teamLeadProvider,
         parentId: 'gm_1',
         teamId,
+        teamType: addTeamType,
       },
-      ...Array.from({ length: 3 }, (_, index) => ({
-        id: `${teamId}_worker_${index + 1}`,
-        type: 'worker' as const,
-        label: createWorkerLabel(teamId, index + 1),
-        provider: PROVIDERS[(PROVIDERS.indexOf(addTeamProvider) + index) % PROVIDERS.length],
-        parentId: managerId,
-        teamId,
-      })),
+      ...workerNodes,
     ];
 
     setTeamsState((current) => ({
@@ -2180,17 +2205,18 @@ export function PageD() {
       teamSettingsByTeam: {
         ...current.teamSettingsByTeam,
         [teamId]: {
-          documentationSavingDefault: addTeamSavingDefault,
-          savingTag,
+          documentationSavingDefault: 'Documentation Mode',
+          savingTag: savingTag || `TEAM-${suffix}`,
         },
       },
     }));
     setShowAddTeamModal(false);
     setAddTeamName('');
+    setAddTeamType('SAT');
     setAddTeamProvider('OpenAI');
-    setAddTeamSavingDefault('Documentation Mode');
+    setAddTeamWorkerProviders(['OpenAI', 'Anthropic', 'Google']);
     setAddTeamSavingTag('');
-    setToast('New team added.');
+    setToast(`${addTeamType} team created.`);
   };
 
   const handleAddAgent = () => {
@@ -2198,7 +2224,17 @@ export function PageD() {
       return;
     }
 
+    if (selectedTeamLead.teamType === 'SAT') {
+      setToast('SAT already includes SM, Worker 1, and Worker 2 as branches of one backend agent. Use MAT for distributed agents.');
+      return;
+    }
+
     const teamWorkers = selectedTeamMembers.filter((node) => node.type === 'worker');
+    if (teamWorkers.length >= 3) {
+      setToast('MAT teams support up to 3 workers in this demo.');
+      return;
+    }
+
     const nextIndex = teamWorkers.length + 1;
     const nextWorker: TeamsGraphNode = {
       id: `${selectedNode.teamId}_worker_${Date.now()}`,
@@ -2207,6 +2243,7 @@ export function PageD() {
       provider: PROVIDERS[nextIndex % PROVIDERS.length],
       parentId: selectedTeamLead.id,
       teamId: selectedNode.teamId,
+      teamType: selectedTeamLead.teamType ?? 'MAT',
     };
 
     setTeamsState((current) => ({
@@ -2243,10 +2280,11 @@ export function PageD() {
     setPromotionNamingDraft({
       promotedAgentId: promotedAgent.id,
       teamId: selectedNode.teamId,
+      teamType: 'SAT',
       smIndex,
-      subManagerSuffix: `${teamCode}-Lead`,
-      worker1Suffix: `${teamCode}-Specialist`,
-      worker2Suffix: `${teamCode}-Support`,
+      teamName: buildPromotedSubManagerName(smIndex, `${teamCode}-Lead`),
+      agentProvider: promotedAgent.provider,
+      workerProviders: ['OpenAI', 'Anthropic', 'Google'],
     });
   };
 
@@ -2262,36 +2300,27 @@ export function PageD() {
       return;
     }
 
-    const subManagerSuffix = promotionNamingDraft.subManagerSuffix.trim();
-    const worker1Suffix = promotionNamingDraft.worker1Suffix.trim();
-    const worker2Suffix = promotionNamingDraft.worker2Suffix.trim();
-    if (!subManagerSuffix || !worker1Suffix || !worker2Suffix) {
-      setToast('Define names for the new sub-manager and both workers before confirming.');
+    const teamName = promotionNamingDraft.teamName.trim();
+    if (!teamName) {
+      setToast('Define the team name before confirming.');
       return;
     }
 
-    const newSubManagerLabel = buildPromotedSubManagerName(promotionNamingDraft.smIndex, subManagerSuffix);
-    const newWorker1Label = buildPromotedWorkerName(promotionNamingDraft.smIndex, 1, worker1Suffix);
-    const newWorker2Label = buildPromotedWorkerName(promotionNamingDraft.smIndex, 2, worker2Suffix);
     const childBaseId = `${selectedNode.teamId}_${Date.now()}`;
-    const defaultChildren: TeamsGraphNode[] = [
-      {
-        id: `${childBaseId}_worker_1`,
-        type: 'worker',
-        label: newWorker1Label,
-        provider: PROVIDERS[(PROVIDERS.indexOf(promotedAgent.provider) + 1) % PROVIDERS.length],
-        parentId: promotedAgent.id,
-        teamId: selectedNode.teamId,
-      },
-      {
-        id: `${childBaseId}_worker_2`,
-        type: 'worker',
-        label: newWorker2Label,
-        provider: PROVIDERS[(PROVIDERS.indexOf(promotedAgent.provider) + 2) % PROVIDERS.length],
-        parentId: promotedAgent.id,
-        teamId: selectedNode.teamId,
-      },
-    ];
+    const promotedWorkerCount = promotionNamingDraft.teamType === 'SAT' ? 2 : 3;
+    const defaultChildren: TeamsGraphNode[] =
+      Array.from({ length: promotedWorkerCount }, (_, index) => ({
+            id: `${childBaseId}_worker_${index + 1}`,
+            type: 'worker' as const,
+            label: buildPromotedWorkerName(promotionNamingDraft.smIndex, index + 1, `Worker-${index + 1}`),
+            provider:
+              promotionNamingDraft.teamType === 'SAT'
+                ? promotionNamingDraft.agentProvider
+                : promotionNamingDraft.workerProviders[index],
+            parentId: promotedAgent.id,
+            teamId: selectedNode.teamId,
+            teamType: promotionNamingDraft.teamType,
+      }));
 
     setTeamsState((current) => ({
       ...current,
@@ -2301,7 +2330,9 @@ export function PageD() {
             ? {
                 ...node,
                 type: 'senior_manager' as const,
-                label: newSubManagerLabel,
+                label: teamName,
+                provider: promotionNamingDraft.agentProvider,
+                teamType: promotionNamingDraft.teamType,
                 phaseState: 'In Review' as const,
                 documentationHistory: {
                   ...node.documentationHistory,
@@ -2317,7 +2348,7 @@ export function PageD() {
     setPromotionNamingDraft(null);
     setSelectedNodeId(null);
     setSelectedAgentId('');
-    setToast('Worker promoted to sub-manager. New branch created with configured names.');
+    setToast(`Worker promoted to ${promotionNamingDraft.teamType} team.`);
   };
 
   const handleEraseAgent = () => {
@@ -2462,7 +2493,7 @@ export function PageD() {
       <div className="scrollbar-thin flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         <section className="flex min-h-full flex-col gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
           <div
-            className="ui-surface grid items-center gap-3 px-4 py-3 md:grid-cols-[auto_minmax(220px,1fr)_auto]"
+            className="ui-surface grid items-center gap-3 px-4 py-3 md:grid-cols-[220px_minmax(260px,1fr)_auto]"
             style={{
               borderColor: 'rgba(15, 23, 42, 0.12)',
               background:
@@ -2477,7 +2508,7 @@ export function PageD() {
                 Operational Elasticity View
               </div>
             </div>
-            <div className="flex min-w-0 flex-col items-start gap-0.5 text-[11px] leading-4">
+            <div className="flex min-w-0 flex-col items-start gap-0 text-[11px] leading-4">
               <HowToLink onClick={() => setActiveHowTo('teams-map')}>
                 How to use Teams Map
               </HowToLink>
@@ -2485,7 +2516,7 @@ export function PageD() {
                 How to create Teams
               </HowToLink>
               <HowToLink onClick={() => setActiveHowTo('team-types')}>
-                Two very different kinds of teams
+                SAT/MAT Teams: difference and uses
               </HowToLink>
             </div>
             <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
@@ -2641,61 +2672,137 @@ export function PageD() {
       </div>
 
       {showAddTeamModal && (
-        <Modal title="Add Team" onClose={() => setShowAddTeamModal(false)} width="max-w-lg">
+        <Modal title="Add Team" onClose={() => setShowAddTeamModal(false)} width="max-w-5xl">
           <div className="grid gap-4">
-            <div className="grid gap-1">
-              <span className="ui-label">Team Name</span>
-              <input
-                className="ui-input text-xs"
-                value={addTeamName}
-                onChange={(event) => setAddTeamName(event.target.value)}
-                placeholder="SM-New Team"
-              />
-            </div>
-
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1">
-                <span className="ui-label">Documentation Saving Default</span>
-                <select
-                  className="ui-input text-xs"
-                  value={addTeamSavingDefault}
-                  onChange={(event) =>
-                    setAddTeamSavingDefault(event.target.value as DocumentationSavingDefault)
+              <div
+                role="button"
+                tabIndex={0}
+                className={`relative grid gap-3 rounded-[14px] border px-4 py-4 text-left transition-opacity sm:order-2 ${
+                  addTeamType === 'SAT' ? 'border-neutral-300 bg-white opacity-100' : 'border-neutral-200 bg-neutral-50 opacity-45'
+                }`}
+                onClick={() => setAddTeamType('SAT')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setAddTeamType('SAT');
                   }
+                }}
+              >
+                <span
+                  className="absolute right-4 top-4 flex h-4 w-4 items-center justify-center rounded-full border"
+                  style={{
+                    borderColor: addTeamType === 'SAT' ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.42)',
+                    background: 'rgba(255,255,255,0.92)',
+                  }}
                 >
-                  {DOCUMENTATION_SAVING_DEFAULTS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
+                  {addTeamType === 'SAT' ? <span className="h-2 w-2 rounded-full bg-neutral-950" /> : null}
+                </span>
+                <div>
+                  <div className="text-sm font-semibold text-neutral-950">SAT - Single Agent Team</div>
+                  <div className="mt-1 text-xs leading-5 text-neutral-600">
+                    One backend agent with SM, Worker 1, and Worker 2 visible as work branches.
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  <label className="grid gap-1">
+                    <span className="ui-label">Team Name</span>
+                    <input
+                      className="ui-input text-xs"
+                      value={addTeamName}
+                      disabled={addTeamType !== 'SAT'}
+                      onChange={(event) => setAddTeamName(event.target.value)}
+                      placeholder="SM-New Team"
+                    />
+                  </label>
+                  <div className="grid gap-1">
+                    <span className="ui-label">Agent Source</span>
+                    <div className="flex flex-wrap gap-2">
+                      {PROVIDERS.map((provider) => (
+                        <button
+                          key={provider}
+                          type="button"
+                          disabled={addTeamType !== 'SAT'}
+                          className={`ui-button ${
+                            addTeamProvider === provider ? 'ui-button-primary text-white' : 'text-neutral-700'
+                          }`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setAddTeamProvider(provider);
+                          }}
+                        >
+                          {getProviderDisplayName(provider)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                role="button"
+                tabIndex={0}
+                className={`relative grid gap-3 rounded-[14px] border px-4 py-4 text-left transition-opacity sm:order-1 ${
+                  addTeamType === 'MAT' ? 'border-neutral-300 bg-white opacity-100' : 'border-neutral-200 bg-neutral-50 opacity-45'
+                }`}
+                onClick={() => setAddTeamType('MAT')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setAddTeamType('MAT');
+                  }
+                }}
+              >
+                <span
+                  className="absolute right-4 top-4 flex h-4 w-4 items-center justify-center rounded-full border"
+                  style={{
+                    borderColor: addTeamType === 'MAT' ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.42)',
+                    background: 'rgba(255,255,255,0.92)',
+                  }}
+                >
+                  {addTeamType === 'MAT' ? <span className="h-2 w-2 rounded-full bg-neutral-950" /> : null}
+                </span>
+                <div>
+                  <div className="text-sm font-semibold text-neutral-950">MAT - Multiple Agent Team</div>
+                  <div className="mt-1 text-xs leading-5 text-neutral-600">Team with up to 3 workers for distributed work.</div>
+                </div>
+                <div className="grid gap-3">
+                  <label className="grid gap-1">
+                    <span className="ui-label">Team Name</span>
+                    <input
+                      className="ui-input text-xs"
+                      value={addTeamName}
+                      disabled={addTeamType !== 'MAT'}
+                      onChange={(event) => setAddTeamName(event.target.value)}
+                      placeholder="SM-New Team"
+                    />
+                  </label>
+                  {[0, 1, 2].map((index) => (
+                    <div key={`add-worker-source-${index}`} className="grid gap-1">
+                      <span className="ui-label">Worker {index + 1} Agent Source</span>
+                      <div className="flex flex-wrap gap-2">
+                        {PROVIDERS.map((provider) => (
+                          <button
+                            key={provider}
+                            type="button"
+                            disabled={addTeamType !== 'MAT'}
+                            className={`ui-button ${
+                              addTeamWorkerProviders[index] === provider ? 'ui-button-primary text-white' : 'text-neutral-700'
+                            }`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setAddTeamWorkerProviders((current) =>
+                                current.map((value, providerIndex) => (providerIndex === index ? provider : value)),
+                              );
+                            }}
+                          >
+                            {getProviderDisplayName(provider)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
-                </select>
-              </div>
-
-              <div className="grid gap-1">
-                <span className="ui-label">Saving Tag</span>
-                <input
-                  className="ui-input text-xs"
-                  value={addTeamSavingTag}
-                  onChange={(event) => setAddTeamSavingTag(event.target.value.toUpperCase())}
-                  placeholder="TEAM-01"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-1">
-              <span className="ui-label">Lead Provider</span>
-              <div className="flex flex-wrap gap-2">
-                {PROVIDERS.map((provider) => (
-                  <button
-                    key={provider}
-                    className={`ui-button ${
-                      addTeamProvider === provider ? 'ui-button-primary text-white' : 'text-neutral-700'
-                    }`}
-                    onClick={() => setAddTeamProvider(provider)}
-                  >
-                    {getProviderDisplayName(provider)}
-                  </button>
-                ))}
+                </div>
               </div>
             </div>
 
@@ -2713,71 +2820,136 @@ export function PageD() {
 
       {promotionNamingDraft && (
         <Modal
-          title="Configure Promoted Branch"
+          title="Promote Agent"
           onClose={() => setPromotionNamingDraft(null)}
-          width="max-w-lg"
+          width="max-w-5xl"
         >
           <div className="grid gap-4">
-            <div className="text-xs leading-[1.5] text-neutral-600">
-              Define the initial visible names before creating the new documentary branch. The
-              numeric prefixes are generated by the system and the suffixes stay editable.
-            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(['MAT', 'SAT'] as TeamType[]).map((teamType) => {
+                const isActive = promotionNamingDraft.teamType === teamType;
 
-            <div className="grid gap-3">
-              <label className="grid gap-1">
-                <span className="ui-label">New Sub-Manager</span>
-                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
-                    {promotionNamingDraft.smIndex}-SM-
-                  </div>
-                  <input
-                    className="ui-input text-xs"
-                    value={promotionNamingDraft.subManagerSuffix}
-                    onChange={(event) =>
+                return (
+                  <div
+                    key={teamType}
+                    role="button"
+                    tabIndex={0}
+                    className={`relative grid gap-3 rounded-[14px] border px-4 py-4 text-left transition-opacity ${
+                      isActive ? 'border-neutral-300 bg-white opacity-100' : 'border-neutral-200 bg-neutral-50 opacity-45'
+                    }`}
+                    onClick={() =>
                       setPromotionNamingDraft((current) =>
-                        current ? { ...current, subManagerSuffix: event.target.value } : current,
+                        current ? { ...current, teamType } : current,
                       )
                     }
-                    autoFocus
-                  />
-                </div>
-              </label>
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setPromotionNamingDraft((current) =>
+                          current ? { ...current, teamType } : current,
+                        );
+                      }
+                    }}
+                  >
+                    <span
+                      className="absolute right-4 top-4 flex h-4 w-4 items-center justify-center rounded-full border"
+                      style={{
+                        borderColor: isActive ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.42)',
+                        background: 'rgba(255,255,255,0.92)',
+                      }}
+                    >
+                      {isActive ? <span className="h-2 w-2 rounded-full bg-neutral-950" /> : null}
+                    </span>
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-950">
+                        Promote to {teamType} Team
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-neutral-600">
+                        {teamType === 'SAT'
+                          ? 'One backend agent with SM, Worker 1, and Worker 2 visible as branches.'
+                          : 'Promoted branch with up to 3 workers.'}
+                      </div>
+                    </div>
 
-              <label className="grid gap-1">
-                <span className="ui-label">New Worker 1</span>
-                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
-                    {promotionNamingDraft.smIndex}-01-W-
-                  </div>
-                  <input
-                    className="ui-input text-xs"
-                    value={promotionNamingDraft.worker1Suffix}
-                    onChange={(event) =>
-                      setPromotionNamingDraft((current) =>
-                        current ? { ...current, worker1Suffix: event.target.value } : current,
-                      )
-                    }
-                  />
-                </div>
-              </label>
+                    <div className="grid gap-3">
+                        <label className="grid gap-1">
+                          <span className="ui-label">Team Name</span>
+                          <input
+                            className="ui-input text-xs"
+                            value={promotionNamingDraft.teamName}
+                            disabled={!isActive}
+                            onChange={(event) =>
+                              setPromotionNamingDraft((current) =>
+                                current ? { ...current, teamName: event.target.value } : current,
+                              )
+                            }
+                          />
+                        </label>
 
-              <label className="grid gap-1">
-                <span className="ui-label">New Worker 2</span>
-                <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                  <div className="ui-surface-subtle rounded-[12px] px-3 py-2 text-xs text-neutral-600">
-                    {promotionNamingDraft.smIndex}-02-W-
+                        {teamType === 'SAT' ? (
+                          <div className="grid gap-1">
+                            <span className="ui-label">Agent Source</span>
+                            <div className="flex flex-wrap gap-2">
+                              {PROVIDERS.map((provider) => (
+                                <button
+                                  key={provider}
+                                  type="button"
+                                  disabled={!isActive}
+                                  className={`ui-button ${
+                                    promotionNamingDraft.agentProvider === provider ? 'ui-button-primary text-white' : 'text-neutral-700'
+                                  }`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPromotionNamingDraft((current) =>
+                                      current ? { ...current, agentProvider: provider } : current,
+                                    );
+                                  }}
+                                >
+                                  {getProviderDisplayName(provider)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          [0, 1, 2].map((index) => (
+                            <div key={`promotion-worker-source-${index}`} className="grid gap-1">
+                              <span className="ui-label">Worker {index + 1} Agent Source</span>
+                              <div className="flex flex-wrap gap-2">
+                                {PROVIDERS.map((provider) => (
+                                  <button
+                                    key={provider}
+                                    type="button"
+                                    disabled={!isActive}
+                                    className={`ui-button ${
+                                      promotionNamingDraft.workerProviders[index] === provider
+                                        ? 'ui-button-primary text-white'
+                                        : 'text-neutral-700'
+                                    }`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setPromotionNamingDraft((current) =>
+                                        current
+                                          ? {
+                                              ...current,
+                                              workerProviders: current.workerProviders.map((value, providerIndex) =>
+                                                providerIndex === index ? provider : value,
+                                              ),
+                                            }
+                                          : current,
+                                      );
+                                    }}
+                                  >
+                                    {getProviderDisplayName(provider)}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                   </div>
-                  <input
-                    className="ui-input text-xs"
-                    value={promotionNamingDraft.worker2Suffix}
-                    onChange={(event) =>
-                      setPromotionNamingDraft((current) =>
-                        current ? { ...current, worker2Suffix: event.target.value } : current,
-                      )
-                    }
-                  />
-                </div>
-              </label>
+                );
+              })}
             </div>
 
             <div className="flex justify-end gap-2">
@@ -2791,7 +2963,7 @@ export function PageD() {
                 className="ui-button ui-button-primary text-white"
                 onClick={handleConfirmPromotionNames}
               >
-                Edit Names & Create Branch
+                Promote Agent
               </button>
             </div>
           </div>
@@ -2824,6 +2996,18 @@ export function PageD() {
             </div>
 
             <div className="grid gap-1">
+              <span className="ui-label">Team Type</span>
+              <div className="ui-surface-subtle grid gap-1 px-3 py-2 text-xs text-neutral-700">
+                <span>{selectedTeamType}</span>
+                <span className="text-[11px] leading-4 text-neutral-500">
+                  {selectedTeamType === 'SAT'
+                    ? 'One backend agent operating through SM, Worker 1, and Worker 2 visible branches.'
+                    : 'Multiple agent team with distributed worker sources.'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-1">
               <span className="ui-label">Lead Provider</span>
               <div className="flex flex-wrap gap-2">
                 {PROVIDERS.map((provider) => (
@@ -2839,34 +3023,6 @@ export function PageD() {
                     {getProviderDisplayName(provider)}
                   </button>
                 ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1">
-                <span className="ui-label">Documentation Saving Default</span>
-                <select
-                  className="ui-input text-xs"
-                  value={draftSavingDefault}
-                  onChange={(event) =>
-                    setDraftSavingDefault(event.target.value as DocumentationSavingDefault)
-                  }
-                >
-                  {DOCUMENTATION_SAVING_DEFAULTS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid gap-1">
-                <span className="ui-label">Saving Tag</span>
-                <input
-                  className="ui-input text-xs"
-                  value={draftSavingTag}
-                  onChange={(event) => setDraftSavingTag(event.target.value.toUpperCase())}
-                />
               </div>
             </div>
 

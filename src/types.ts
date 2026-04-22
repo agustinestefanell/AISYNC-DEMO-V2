@@ -5,6 +5,7 @@ export type MessageRole = 'user' | 'agent' | 'system';
 export type FileType = 'Conversation' | 'Document' | 'Report';
 export type AIProvider = 'OpenAI' | 'Anthropic' | 'Google';
 export type TeamsNodeType = 'general_manager' | 'senior_manager' | 'worker';
+export type TeamType = 'SAT' | 'MAT';
 export type PromptVisibility = 'public' | 'private';
 export type WorkPhaseState = 'Open' | 'In Review' | 'Closed';
 export type AuditAnswerContentType = 'message-selection';
@@ -541,6 +542,7 @@ export interface TeamsGraphNode {
   provider: AIProvider;
   parentId: string | null;
   teamId: string;
+  teamType?: TeamType;
   phaseState?: WorkPhaseState;
   documentationHistory?: {
     historicalWorkerLabel?: string | null;
