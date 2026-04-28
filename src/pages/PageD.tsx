@@ -27,8 +27,119 @@ import type { AIProvider, TeamType, TeamsGraphNode } from '../types';
 import { getSecondarySubManagerLabel } from '../pageLabels';
 
 type TeamsViewMode = 'map' | 'tree';
+type TeamConnectionType = 'project-bound' | 'persistent-partner';
+type TeamConnectionScope = 'no-shared-repository' | 'shared-project-repository';
+type TeamSharedObject =
+  | 'handoff-package'
+  | 'review-request'
+  | 'approved-deliverable'
+  | 'prompt-package'
+  | 'project-context-package';
 
-function MapAddUserTeamAnchor({ onClick }: { onClick: () => void }) {
+type ConnectTeamDraft = {
+  userEmail: string;
+  connectionType: TeamConnectionType;
+  hostTeamId: string;
+  sharedScope: TeamConnectionScope;
+  sharedObjects: TeamSharedObject[];
+};
+
+const TEAM_CONNECTION_OBJECTS: Array<{ id: TeamSharedObject; label: string }> = [
+  { id: 'handoff-package', label: 'Handoff Package' },
+  { id: 'review-request', label: 'Review Request' },
+  { id: 'approved-deliverable', label: 'Approved Deliverable' },
+  { id: 'prompt-package', label: 'Prompt Package' },
+  { id: 'project-context-package', label: 'Project Context Package' },
+];
+
+const TEAM_CONNECTION_GLOSSARY = [
+  {
+    term: 'User email',
+    body: 'Use this to identify the external account you want to connect with for this demo relationship.',
+  },
+  {
+    term: 'Project-bound connection',
+    body: 'Use this when the connection is only for one project and should not become a permanent partnership.',
+  },
+  {
+    term: 'Persistent partner connection',
+    body: 'Use this when both accounts expect to collaborate repeatedly across more than one project.',
+  },
+  {
+    term: 'No shared repository',
+    body: 'Use this when both sides will stay separated and only exchange approved packages when needed.',
+  },
+  {
+    term: 'Shared project repository',
+    body: 'This means both sides can access the project shared materials for approved artifacts. It does not mean a fully shared live repository.',
+  },
+  {
+    term: 'Handoff Package',
+    body: 'A prepared transfer bundle for sending work, decisions, and responsibility in a controlled format.',
+  },
+  {
+    term: 'Review Request',
+    body: 'A request that asks the external team to review something before it is accepted or forwarded.',
+  },
+  {
+    term: 'Approved Deliverable',
+    body: 'A result that is already accepted for sharing outside the local team boundary.',
+  },
+  {
+    term: 'Prompt Package',
+    body: 'A reusable prompt bundle that can be shared with the external side for aligned execution.',
+  },
+  {
+    term: 'Project Context Package',
+    body: 'A controlled package of project background, shared reference points, and progress context.',
+  },
+  {
+    term: 'Host Team',
+    body: 'Choose which local team will host this external connection. That team becomes the entry and exit point for the relationship.',
+  },
+  {
+    term: 'External Team View in Teams Map',
+    body: 'External teams appear with a default external view in the map. This keeps the demo simple and avoids advanced visibility settings.',
+  },
+  {
+    term: 'Send request',
+    body: 'Save this connection configuration as a demo request and update the external team preview.',
+  },
+  {
+    term: 'Cancel',
+    body: 'Close the modal without applying a new change.',
+  },
+];
+
+function createInitialConnectTeamDraft(): ConnectTeamDraft {
+  return {
+    userEmail: '',
+    connectionType: 'project-bound',
+    hostTeamId: '',
+    sharedScope: 'no-shared-repository',
+    sharedObjects: ['handoff-package', 'project-context-package'],
+  };
+}
+
+function getConnectionTypeLabel(value: TeamConnectionType) {
+  return value === 'project-bound' ? 'Project-bound connection' : 'Persistent partner connection';
+}
+
+function MapAddUserTeamAnchor({
+  onClick,
+  connection,
+  hostTeamLabel,
+}: {
+  onClick: () => void;
+  connection: ConnectTeamDraft | null;
+  hostTeamLabel?: string;
+}) {
+  const selectedObjectLabels = connection
+    ? TEAM_CONNECTION_OBJECTS.filter((item) => connection.sharedObjects.includes(item.id))
+        .slice(0, 3)
+        .map((item) => item.label)
+    : [];
+
   return (
     <div
       data-pan-block="true"
@@ -49,26 +160,86 @@ function MapAddUserTeamAnchor({ onClick }: { onClick: () => void }) {
           borderTop: '2px dashed rgba(100, 116, 139, 0.52)',
         }}
       />
-      <button
-        type="button"
-        data-pan-block="true"
-        className="flex min-h-[188px] w-full flex-col items-center justify-center rounded-[22px] border-2 border-dashed px-6 py-6 text-center transition-colors hover:border-neutral-500 hover:bg-white/90"
-        style={{
-          borderColor: 'rgba(100, 116, 139, 0.45)',
-          background:
-            'linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(241,245,249,0.92) 100%)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 12px 24px rgba(15,23,42,0.05)',
-        }}
-        onClick={onClick}
-      >
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-neutral-400 bg-white/85 text-[28px] font-semibold leading-none text-neutral-700">
-          +
-        </div>
-        <div className="mt-4 text-[14px] font-semibold text-neutral-900">Connect Team</div>
-        <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
-          Link external User
-        </div>
-      </button>
+      {connection ? (
+        <button
+          type="button"
+          data-pan-block="true"
+          className="w-full rounded-[22px] border-2 border-dashed px-5 py-5 text-left transition-colors hover:border-neutral-500 hover:bg-white/92"
+          style={{
+            borderColor: 'rgba(148, 163, 184, 0.5)',
+            background:
+              'linear-gradient(180deg, rgba(249,250,251,0.94) 0%, rgba(241,245,249,0.98) 100%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.88), 0 12px 24px rgba(15,23,42,0.05)',
+          }}
+          onClick={onClick}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="rounded-full border border-neutral-300 bg-white/92 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-600">
+              External
+            </div>
+            <div className="rounded-full border border-neutral-300 bg-white/92 px-2.5 py-1 text-[10px] font-semibold text-neutral-600">
+              Connected view
+            </div>
+          </div>
+
+          <div className="mt-4 text-[13px] font-semibold text-neutral-900">
+            {connection.userEmail || 'External account'}
+          </div>
+
+          <div className="mt-2 text-[11px] leading-[1.45] text-neutral-600">
+            Hosted by {hostTeamLabel ?? 'selected local team'}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="rounded-full border border-neutral-300 bg-white/9 px-2 py-1 text-[10px] font-medium text-neutral-600">
+              Submanager ↔ Submanager
+            </span>
+            <span className="rounded-full border border-neutral-300 bg-white/9 px-2 py-1 text-[10px] font-medium text-neutral-600">
+              {getConnectionTypeLabel(connection.connectionType)}
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedObjectLabels.length > 0 ? (
+              selectedObjectLabels.map((label) => (
+                <span
+                  key={label}
+                  className="rounded-full border border-neutral-300 bg-white/88 px-2 py-1 text-[10px] font-medium text-neutral-700"
+                >
+                  {label}
+                </span>
+              ))
+            ) : (
+              <span className="text-[10px] text-neutral-500">No approved shared objects selected.</span>
+            )}
+          </div>
+
+          <div className="mt-4 text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+            Controlled external relationship
+          </div>
+        </button>
+      ) : (
+        <button
+          type="button"
+          data-pan-block="true"
+          className="flex min-h-[188px] w-full flex-col items-center justify-center rounded-[22px] border-2 border-dashed px-6 py-6 text-center transition-colors hover:border-neutral-500 hover:bg-white/90"
+          style={{
+            borderColor: 'rgba(100, 116, 139, 0.45)',
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(241,245,249,0.92) 100%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 12px 24px rgba(15,23,42,0.05)',
+          }}
+          onClick={onClick}
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-neutral-400 bg-white/85 text-[28px] font-semibold leading-none text-neutral-700">
+            +
+          </div>
+          <div className="mt-4 text-[14px] font-semibold text-neutral-900">Connect Team</div>
+          <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+            Link external User
+          </div>
+        </button>
+      )}
     </div>
   );
 }
@@ -1377,7 +1548,8 @@ function TreeStructureView({
   onOpenMainWorkspace,
   onOpenWorkspace,
   onEditTeam,
-  onAddUserTeam,
+  onConnectTeam,
+  externalConnection,
   inlineRename,
   onInlineRenameChange,
   onStartInlineRename,
@@ -1397,7 +1569,8 @@ function TreeStructureView({
   onOpenMainWorkspace: () => void;
   onOpenWorkspace: (node: TeamsGraphNode) => void;
   onEditTeam: (nodeId: string) => void;
-  onAddUserTeam: () => void;
+  onConnectTeam: () => void;
+  externalConnection: ConnectTeamDraft | null;
   inlineRename: { nodeId: string; value: string } | null;
   onInlineRenameChange: (value: string) => void;
   onStartInlineRename: (node: TeamsGraphNode) => void;
@@ -1431,6 +1604,10 @@ function TreeStructureView({
     () => buildTreeLayout(generalManager, layoutNodes, 'map'),
     [generalManager, layoutNodes],
   );
+  const externalHostTeamLabel =
+    externalConnection?.hostTeamId
+      ? topLevelUnits.find((unit) => unit.teamId === externalConnection.hostTeamId)?.label
+      : undefined;
 
   return (
     <CanvasViewport
@@ -1565,7 +1742,11 @@ function TreeStructureView({
                       </button>
                     </div>
                   </div>
-                  <MapAddUserTeamAnchor onClick={onAddUserTeam} />
+                  <MapAddUserTeamAnchor
+                    onClick={onConnectTeam}
+                    connection={externalConnection}
+                    hostTeamLabel={externalHostTeamLabel}
+                  />
                 </div>
               );
             }
@@ -1746,7 +1927,7 @@ function TreeOverviewView({
   teamNodesByTeam,
   onOpenWorkspace,
   onEditTeam,
-  onAddUserTeam,
+  onConnectTeam,
   zoomInSignal,
   zoomOutSignal,
   resetSignal,
@@ -1757,7 +1938,7 @@ function TreeOverviewView({
   teamNodesByTeam: Record<string, TeamsGraphNode[]>;
   onOpenWorkspace: (node: TeamsGraphNode) => void;
   onEditTeam: (nodeId: string) => void;
-  onAddUserTeam: () => void;
+  onConnectTeam: () => void;
   zoomInSignal: number;
   zoomOutSignal: number;
   resetSignal: number;
@@ -1828,7 +2009,7 @@ function TreeOverviewView({
                 >
                   <div className="text-[8px] uppercase tracking-[0.18em] text-white/55">Main</div>
                   <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-[1.2]">{generalManager.label}</div>
-                  <TreeAddUserTeamAnchor onClick={onAddUserTeam} />
+                  <TreeAddUserTeamAnchor onClick={onConnectTeam} />
                 </div>
               );
             }
@@ -1943,6 +2124,9 @@ export function PageD() {
   const [showManagerMobile, setShowManagerMobile] = useState(false);
   const [teamsState, setTeamsState] = useState<TeamsMapState>(getInitialTeamsMapState);
   const [showAddTeamModal, setShowAddTeamModal] = useState(false);
+  const [showConnectTeamModal, setShowConnectTeamModal] = useState(false);
+  const [connectTeamDraft, setConnectTeamDraft] = useState<ConnectTeamDraft>(createInitialConnectTeamDraft);
+  const [externalConnection, setExternalConnection] = useState<ConnectTeamDraft | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [draftLabel, setDraftLabel] = useState('');
@@ -2133,6 +2317,46 @@ export function PageD() {
     setAddTeamWorkerProviders(['OpenAI', 'Anthropic', 'Google']);
     setAddTeamSavingTag('');
     setShowAddTeamModal(true);
+  };
+
+  const openConnectTeamModal = () => {
+    setConnectTeamDraft(
+      externalConnection
+        ? { ...externalConnection }
+        : {
+            ...createInitialConnectTeamDraft(),
+            hostTeamId: topLevelUnits[0]?.teamId ?? '',
+          },
+    );
+    setShowConnectTeamModal(true);
+  };
+
+  const handleToggleSharedObject = (objectId: TeamSharedObject) => {
+    setConnectTeamDraft((current) => ({
+      ...current,
+      sharedObjects: current.sharedObjects.includes(objectId)
+        ? current.sharedObjects.filter((item) => item !== objectId)
+        : [...current.sharedObjects, objectId],
+    }));
+  };
+
+  const handleSendConnectionRequest = () => {
+    const normalizedEmail = connectTeamDraft.userEmail.trim();
+    if (!normalizedEmail) {
+      setToast('Enter the external user email before sending the request.');
+      return;
+    }
+    if (!connectTeamDraft.hostTeamId) {
+      setToast('Select which local team will host the connection.');
+      return;
+    }
+
+    setExternalConnection({
+      ...connectTeamDraft,
+      userEmail: normalizedEmail,
+    });
+    setShowConnectTeamModal(false);
+    setToast('External team connection configured for the demo.');
   };
 
   const handleSaveNode = () => {
@@ -2624,7 +2848,8 @@ export function PageD() {
                 onOpenMainWorkspace={() => openMainWorkspace(generalManager)}
                 onOpenWorkspace={openTeamWorkspace}
                 onEditTeam={openEditNode}
-                onAddUserTeam={openAddUserTeamModal}
+                onConnectTeam={openConnectTeamModal}
+                externalConnection={externalConnection}
                 inlineRename={inlineRename}
                 onInlineRenameChange={(value) =>
                   setInlineRename((current) => (current ? { ...current, value } : current))
@@ -2645,7 +2870,7 @@ export function PageD() {
                 teamNodesByTeam={teamNodesByTeam}
                 onOpenWorkspace={openTeamWorkspace}
                 onEditTeam={openEditNode}
-                onAddUserTeam={openAddUserTeamModal}
+                onConnectTeam={openConnectTeamModal}
                 zoomInSignal={zoomInSignal}
                 zoomOutSignal={zoomOutSignal}
                 resetSignal={resetSignal}
@@ -3166,6 +3391,214 @@ export function PageD() {
               <button className="ui-button ml-auto text-neutral-700" onClick={handleSaveNode}>
                 Save changes
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showConnectTeamModal && (
+        <Modal
+          title="Connect Team"
+          onClose={() => setShowConnectTeamModal(false)}
+          width="max-w-6xl"
+        >
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
+            <div className="flex self-start flex-col gap-3">
+              <div className="text-[14px] leading-[1.45] text-neutral-600">
+                Create a controlled connection between your team and an external account.
+              </div>
+
+              <div className="grid gap-4 rounded-[18px] border border-neutral-200 bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <label className="grid gap-1">
+                  <span className="ui-label">User email</span>
+                  <input
+                    className="ui-input text-xs"
+                    placeholder="name@company.com"
+                    value={connectTeamDraft.userEmail}
+                    onChange={(event) =>
+                      setConnectTeamDraft((current) => ({ ...current, userEmail: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <div className="grid gap-2">
+                  <span className="ui-label">Connection type</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {([
+                      {
+                        value: 'project-bound' as const,
+                        title: 'Project-bound connection',
+                        body: 'Connection limited to one project.',
+                      },
+                      {
+                        value: 'persistent-partner' as const,
+                        title: 'Persistent partner connection',
+                        body: 'Stable connection for recurring collaboration between accounts.',
+                      },
+                    ]).map((option) => {
+                      const active = connectTeamDraft.connectionType === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-[16px] border px-4 py-4 text-left transition-colors ${
+                            active ? 'border-neutral-300 bg-white' : 'border-neutral-200 bg-neutral-50'
+                          }`}
+                          onClick={() =>
+                            setConnectTeamDraft((current) => ({ ...current, connectionType: option.value }))
+                          }
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-neutral-900">{option.title}</div>
+                              <div className="mt-1 text-xs leading-[1.5] text-neutral-600">{option.body}</div>
+                            </div>
+                            <span
+                              className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border"
+                              style={{
+                                borderColor: active ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.32)',
+                                background: 'rgba(255,255,255,0.96)',
+                              }}
+                            >
+                              {active ? <span className="h-2 w-2 rounded-full bg-neutral-950" /> : null}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <span className="ui-label">Host Team</span>
+                  <div className="text-xs leading-[1.5] text-neutral-600">
+                    Select which local team will host this external connection.
+                  </div>
+                  <select
+                    className="ui-input text-xs"
+                    value={connectTeamDraft.hostTeamId}
+                    onChange={(event) =>
+                      setConnectTeamDraft((current) => ({ ...current, hostTeamId: event.target.value }))
+                    }
+                  >
+                    {topLevelUnits.map((team) => (
+                      <option key={team.teamId} value={team.teamId}>
+                        {team.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid gap-2">
+                  <span className="ui-label">Shared scope</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {([
+                      {
+                        value: 'no-shared-repository' as const,
+                        title: 'No shared repository',
+                        body: 'Keep both sides separated and exchange only approved packages.',
+                      },
+                      {
+                        value: 'shared-project-repository' as const,
+                        title: 'Shared project repository',
+                        body: 'Shared project base for approved artifacts, not a live common repository.',
+                      },
+                    ]).map((option) => {
+                      const active = connectTeamDraft.sharedScope === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-[16px] border px-4 py-4 text-left transition-colors ${
+                            active ? 'border-neutral-300 bg-white' : 'border-neutral-200 bg-neutral-50'
+                          }`}
+                          onClick={() =>
+                            setConnectTeamDraft((current) => ({ ...current, sharedScope: option.value }))
+                          }
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-neutral-900">{option.title}</div>
+                              <div className="mt-1 text-xs leading-[1.5] text-neutral-600">{option.body}</div>
+                            </div>
+                            <span
+                              className="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border"
+                              style={{
+                                borderColor: active ? 'rgba(15, 23, 42, 0.88)' : 'rgba(15, 23, 42, 0.32)',
+                                background: 'rgba(255,255,255,0.96)',
+                              }}
+                            >
+                              {active ? <span className="h-2 w-2 rounded-full bg-neutral-950" /> : null}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <span className="ui-label">Shared Objects of the Selected Team</span>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {TEAM_CONNECTION_OBJECTS.map((item) => {
+                      const checked = connectTeamDraft.sharedObjects.includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className="flex items-center gap-3 rounded-[14px] border border-neutral-200 bg-white px-3 py-3 text-sm text-neutral-700"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-slate-900"
+                            checked={checked}
+                            onChange={() => handleToggleSharedObject(item.id)}
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <span className="ui-label">External Team View in Teams Map</span>
+                  <div className="rounded-[14px] border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm leading-[1.55] text-neutral-600">
+                    External teams are shown with a default external view in the map.
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-0.5 pb-0.5">
+                <button className="ui-button ui-button-primary min-h-9 px-4 text-sm text-white" onClick={handleSendConnectionRequest}>
+                  Send request
+                </button>
+                <button className="ui-button min-h-9 px-4 text-sm text-neutral-700" onClick={() => setShowConnectTeamModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 self-stretch">
+              <div className="flex h-full min-h-[740px] flex-col rounded-[18px] border border-neutral-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.97)_0%,rgba(245,248,251,0.98)_100%)] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                <div className="text-sm font-semibold text-neutral-950">Glossary</div>
+                <div className="mt-1 text-xs leading-[1.5] text-neutral-600">
+                  Read each control in plain language before you configure the relationship.
+                </div>
+                <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-2">
+                  <div className="grid gap-4">
+                    {TEAM_CONNECTION_GLOSSARY.map((entry) => (
+                      <div key={entry.term} className="text-sm leading-[1.55] text-neutral-700">
+                        <div className="font-semibold underline decoration-neutral-500/60 underline-offset-2">
+                          {entry.term}
+                        </div>
+                        <div className="mt-1 text-[13px] leading-[1.6] text-neutral-600">
+                          {entry.body}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </Modal>
