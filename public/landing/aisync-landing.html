@@ -132,17 +132,50 @@
     max-width: 820px;
     margin-bottom: 28px;
   }
+  .hero-title-primary,
+  .hero-title-secondary {
+    display: block;
+  }
+  .hero-title-primary {
+    font-size: 1em;
+    line-height: 1.04;
+  }
+  .hero-title-secondary {
+    margin-top: 14px;
+    font-size: clamp(30px, 4.2vw, 50px);
+    line-height: 1.14;
+    font-weight: 600;
+    color: #D5D5DE;
+  }
   h1 em {
     font-style: italic;
     color: var(--blue-light);
   }
   .hero-sub {
-    font-size: 18px;
-    color: var(--muted);
-    max-width: 560px;
-    line-height: 1.65;
+    display: grid;
+    gap: 10px;
+    max-width: 780px;
+    line-height: 1.55;
     margin-bottom: 44px;
-    font-weight: 300;
+    font-weight: 400;
+  }
+  .hero-sub-line {
+    display: block;
+  }
+  .hero-sub-line-primary {
+    font-size: 19px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .hero-sub-line-secondary {
+    font-size: 18px;
+    color: #D5D5DE;
+    font-weight: 400;
+  }
+  .hero-sub-line-tertiary {
+    font-size: 16px;
+    color: var(--muted);
+    font-weight: 400;
   }
   .hero-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
   .btn-primary {
@@ -259,6 +292,22 @@
     letter-spacing: -0.02em;
     color: var(--text);
     max-width: 640px;
+  }
+  .section-title-primary,
+  .section-title-secondary {
+    display: block;
+  }
+  .section-title-primary {
+    font-size: 1em;
+    line-height: 1.05;
+  }
+  .section-title-secondary {
+    margin-top: 12px;
+    font-size: clamp(23px, 2.8vw, 34px);
+    line-height: 1.28;
+    font-weight: 600;
+    color: #D5D5DE;
+    max-width: 860px;
   }
   h2 em { font-style: italic; color: var(--blue-light); }
   .section-desc {
@@ -413,6 +462,58 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 16px;
+  }
+  .tiers-semantics {
+    margin-bottom: 28px;
+    padding: 22px 24px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(17,17,19,0.94), rgba(23,23,26,0.88));
+  }
+  .tiers-semantics-title {
+    font-family: var(--serif);
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .tiers-semantics-title span { color: var(--blue-light); }
+  .tiers-semantics-copy {
+    max-width: 760px;
+    margin-top: 10px;
+    font-size: 15px;
+    color: #C8C8D4;
+    line-height: 1.7;
+  }
+  .ai-environments-panel {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(17,17,19,0.96), rgba(23,23,26,0.92));
+    padding: 30px 32px;
+  }
+  .ai-environments-title {
+    font-family: var(--serif);
+    font-size: clamp(30px, 4vw, 44px);
+    font-weight: 700;
+    line-height: 1.16;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 16px;
+    max-width: 820px;
+  }
+  .ai-environments-body,
+  .ai-environments-support {
+    max-width: 800px;
+    font-size: 15px;
+    line-height: 1.72;
+  }
+  .ai-environments-body {
+    color: #D5D5DE;
+    margin-bottom: 12px;
+  }
+  .ai-environments-support {
+    color: var(--muted);
   }
   .tier-card {
     border: 1px solid var(--border);
@@ -661,8 +762,8 @@
 <!-- HERO -->
 <section id="hero" style="padding-left:40px;padding-right:40px;">
   <div class="hero-label">Governed AI Work Infrastructure</div>
-  <h1>AI-assisted work under <em>control.</em><br>Traceable AI-assisted work.</h1>
-  <p class="hero-sub">AISync is the operational control layer for AI-assisted work &mdash; combining structured multi-chat production, institutional memory, and traceable workflows. Built first for professional services firms that cannot afford Shadow AI risk.</p>
+  <h1><span class="hero-title-primary">AI-assisted work under <em>control.</em></span><span class="hero-title-secondary">Traceable AI-assisted work.</span></h1>
+  <p class="hero-sub"><span class="hero-sub-line hero-sub-line-primary">AISync is the control layer for AI-assisted work.</span><span class="hero-sub-line hero-sub-line-secondary">AISync turns AI-assisted work into structured, traceable, and recoverable work.</span><span class="hero-sub-line hero-sub-line-tertiary">AISync combines an operational multi-chat with a control layer that governs review, memory, traceability, and continuity.</span></p>
   <div class="hero-actions">
     <a href="/chat-first-preview" class="btn-primary">See the live demo</a>
     <a href="#how" class="btn-ghost">How it works</a>
@@ -885,8 +986,7 @@
 <section id="how">
   <div class="section-header">
     <div class="section-tag">How AISync Works</div>
-    <h2>A multi-chat work surface with a governance layer on top.</h2>
-    <p class="section-desc">AISync adds structure, continuity, and traceability to AI-assisted work. It helps teams produce, save, trace, and resume work without losing control.</p>
+    <h2><span class="section-title-primary">A governed work system</span><span class="section-title-secondary">where human-led AI work stays structured, reviewable, and recoverable.</span></h2>
   </div>
 
   <div class="how-layout">
@@ -894,40 +994,40 @@
       <div class="how-step">
         <div class="step-num">01</div>
         <div class="step-content">
-          <div class="step-title">Human Director sets the mandate and keeps authority</div>
-          <div class="step-body">You define the project goal and direct the AI General Manager. The work begins from a human decision &mdash; not from an AI assumption. Human Review &amp; Forward governs every interaction between AI agents.</div>
+          <div class="step-title">Human direction comes first</div>
+          <div class="step-body">Work begins with a human decision &mdash; not with an AI assumption. The user defines the direction, and critical transfers remain under explicit human control.</div>
           <span class="step-tag tag-blue">Human-in-the-loop by design</span>
         </div>
       </div>
       <div class="how-step">
         <div class="step-num">02</div>
         <div class="step-content">
-          <div class="step-title">The GM orchestrates specialized sub-teams</div>
-          <div class="step-body">The AI General Manager helps structure the work across specialized teams. Teams can grow, branch, connect, or be restructured without losing operational memory.</div>
+          <div class="step-title">Each account structures work internally</div>
+          <div class="step-body">Inside one AISync Account, work is organized through Projects, Teams, Workspaces, and AI Agent Sessions. Teams can grow, branch, or be restructured without losing operational memory.</div>
           <span class="step-tag tag-orange">Organizational elasticity</span>
         </div>
       </div>
       <div class="how-step">
         <div class="step-num">03</div>
         <div class="step-content">
-          <div class="step-title">Review & Forward creates a governed transfer record</div>
-          <div class="step-body">A core governed transfer mechanism. It keeps content movement explicit, reviewable, and traceable instead of relying on informal copy-paste between people and AI tools. Copy-paste is removed by design.</div>
+          <div class="step-title">Review &amp; Forward keeps transfers governed</div>
+          <div class="step-body">Important transfers do not depend on informal copy-paste chains or blind automation. Review &amp; Forward makes movement between roles explicit, reviewable, and traceable.</div>
           <span class="step-tag tag-blue">Approvals and governed transfers become audit events</span>
         </div>
       </div>
       <div class="how-step">
         <div class="step-num">04</div>
         <div class="step-content">
-          <div class="step-title">Work is checkpointed and recoverable</div>
-          <div class="step-body">Save Version and Resume Work turn fragile AI sessions into recoverable work states. When someone leaves, the project can continue from structured checkpoints instead of starting over.</div>
+          <div class="step-title">Work is saved as recoverable progress</div>
+          <div class="step-body">Save Version creates a recoverable work state. Teams can reopen prior points, understand what was saved, and continue from valid progress instead of losing context inside disposable sessions.</div>
           <span class="step-tag tag-teal">Resumable work</span>
         </div>
       </div>
       <div class="how-step">
         <div class="step-num">05</div>
         <div class="step-content">
-          <div class="step-title">Multi-model work, under one operational control layer</div>
-          <div class="step-body">Claude, GPT, Gemini, or any compatible model can be assigned across roles inside one traceable workflow. AISync brings multi-model work, human direction, and operational continuity into one system.</div>
+          <div class="step-title">AISync governs work across public, private, and local AI</div>
+          <div class="step-body">GPT, Claude, Gemini, private deployments, or local AI controlled by the user or institution can support the workflow. AISync&apos;s value is not the model by itself. Its value is keeping work governed, traceable, reviewable, and recoverable across whichever AI environment the account chooses. This reduces dependence on public tools and gives users and institutions more control over how AI is used inside real work.</div>
           <span class="step-tag tag-blue">Model-agnostic operational governance</span>
         </div>
       </div>
@@ -1011,7 +1111,7 @@
       <div class="feature-number">F-01</div>
       <span class="feature-accent" style="background: var(--blue-light);"></span>
       <div class="feature-title">Review & Forward</div>
-      <div class="feature-body">A core governed transfer mechanism. It keeps content movement explicit, reviewable, and traceable instead of relying on informal copy-paste between people and AI tools. Copy-paste is removed by design.</div>
+      <div class="feature-body">A core governed transfer mechanism. It keeps content movement explicit, reviewable, and traceable instead of relying on informal copy-paste chains between people and AI tools.</div>
     </div>
     <div class="feature-card">
       <div class="feature-number">F-02</div>
@@ -1023,7 +1123,7 @@
       <div class="feature-number">F-03</div>
       <span class="feature-accent" style="background: var(--orange);"></span>
       <div class="feature-title">Save Version / Resume Work</div>
-      <div class="feature-body">Projects live in institutional memory, not in individual sessions. Any point in a project can be checkpointed and resumed â€” by the same person or someone new. Work survives employee turnover, context switches, and session loss.</div>
+      <div class="feature-body">Projects live in institutional memory, not in disposable sessions. Any point in a project can be checkpointed and resumed by the same account or through a governed transfer to another account. Work survives turnover, context switches, and session loss.</div>
     </div>
     <div class="feature-card">
       <div class="feature-number">F-04</div>
@@ -1035,14 +1135,24 @@
       <div class="feature-number">F-05</div>
       <span class="feature-accent" style="background: var(--blue-light);"></span>
       <div class="feature-title">Teams Map & Organizational Elasticity</div>
-      <div class="feature-body">Visual representation of the project structure. Teams can grow, branch, connect across users, and reorganize without losing operational continuity.</div>
+      <div class="feature-body">Teams can grow, branch, and be restructured inside one account. External collaboration happens through governed links between separate accounts.</div>
     </div>
     <div class="feature-card">
       <div class="feature-number">F-06</div>
       <span class="feature-accent" style="background: var(--teal);"></span>
       <div class="feature-title">Multi-Model Support</div>
-      <div class="feature-body">Claude, GPT-4o, Gemini, or any REST-compatible model assigned across Workers and teams. AISync is designed for cross-model, human-directed, traceable work.</div>
+      <div class="feature-body">Public models, private deployments, and local AI can all support governed workflows inside the same operational system. AISync keeps that work traceable and recoverable across whichever environment the account chooses.</div>
     </div>
+  </div>
+</section>
+
+<hr class="full-divider">
+
+<section id="ai-environments">
+  <div class="ai-environments-panel">
+    <h2 class="ai-environments-title">Public, private, or local AI &mdash; under your control</h2>
+    <p class="ai-environments-body">AISync is not tied to public AI alone. Organizations can work with public models, private deployments, or local AI they control themselves. AISync keeps that work governed, traceable, and recoverable across whichever AI environment they choose.</p>
+    <p class="ai-environments-support">This reduces dependency on public tools and strengthens data control, institutional continuity, and deployment flexibility.</p>
   </div>
 </section>
 
@@ -1056,24 +1166,28 @@
     <p class="section-desc">Upgrade paths are defined by depth of control, organizational structure, and traceability needs &mdash; not by artificial AI limits.</p>
   </div>
 
+  <div class="tiers-semantics">
+    <div class="tiers-semantics-title">AISync is a network of sovereign single-user cells.<br><span>One cell. One user. One account.</span></div>
+    <p class="tiers-semantics-copy">Collaboration happens through governed links between cells, not through multiple users inside one account.</p>
+  </div>
+
   <div class="tiers-grid">
     <div class="tier-card">
       <div class="tier-name">Individual</div>
       <div class="tier-price"><span class="tier-currency">USD</span>19<sub>/mo</sub></div>
       <div class="tier-cadence">USD 15/mo billed annually</div>
-      <div class="tier-audience">Independent consultant, freelancer, analyst</div>
+      <div class="tier-audience">For independent professionals operating as a single sovereign cell<br>1 account · 1 user<br>Teams and workspaces inside one sovereign cell</div>
       <hr class="tier-divider">
       <ul class="tier-features">
-        <li class="active">1 personal workspace</li>
         <li class="active">Human authority always in control</li>
         <li class="active">Save Version + Resume Work</li>
         <li class="active">Basic Review &amp; Forward traceability</li>
         <li class="active">Backup and recoverable work states</li>
-        <li class="active">Single AI provider</li>
+        <li class="active">Single-provider starting configuration</li>
       </ul>
       <div class="tier-capacity">
         <div class="tier-capacity-label">Capacity</div>
-        <div class="tier-capacity-body">1 user<br>Unlimited projects</div>
+        <div class="tier-capacity-body">Single-user sovereign account<br>Unlimited projects</div>
       </div>
       <a href="/" class="tier-cta tier-cta-ghost">Start trial</a>
     </div>
@@ -1082,19 +1196,17 @@
       <div class="tier-name">Pro</div>
       <div class="tier-price"><span class="tier-currency">USD</span>39<sub>/mo</sub></div>
       <div class="tier-cadence">USD 32/mo billed annually</div>
-      <div class="tier-audience">Senior consultant or a user working with 1–2 collaborators</div>
+      <div class="tier-audience">For single-user accounts that need governed collaboration with external AISync accounts<br>1 account · 1 user<br>Up to 3 external team links</div>
       <hr class="tier-divider">
       <ul class="tier-features">
         <li class="active">Everything in Individual</li>
-        <li class="active">Up to 3 connected users (basic hierarchy)</li>
         <li class="active">Basic Sub-Manager</li>
         <li class="active">Basic Cross Verification</li>
         <li class="active">Exportable Audit PDF</li>
-        <li class="active">Hierarchical collaborator connection</li>
       </ul>
       <div class="tier-capacity">
         <div class="tier-capacity-label">Capacity</div>
-        <div class="tier-capacity-body">Up to 3 users per workspace</div>
+        <div class="tier-capacity-body">Governed collaboration between separate accounts<br>Basic hierarchy and control<br>Both sides require a compatible plan<br>External team = separate AISync account</div>
       </div>
       <a href="/" class="tier-cta tier-cta-ghost">Upgrade to Pro</a>
     </div>
@@ -1103,21 +1215,17 @@
       <span class="tier-badge">Most popular</span>
       <div class="tier-name">Business</div>
       <div class="tier-price"><span class="tier-currency">USD</span>149<sub>/mo</sub></div>
-      <div class="tier-cadence">per workspace</div>
-      <div class="tier-audience">Pequeñas firmas o equipos (4-12 personas)</div>
+      <div class="tier-cadence">USD 149/mo billed monthly</div>
+      <div class="tier-audience">For users operating in small firms or coordinated multi-cell environments<br>1 account · 1 user<br>Expanded teams and sub-teams inside one cell</div>
       <hr class="tier-divider">
       <ul class="tier-features">
         <li class="active">Everything in Pro</li>
         <li class="active">Full GM + Sub-Manager hierarchy</li>
-        <li class="active">Unlimited Workers per project</li>
         <li class="active">Multi-model support</li>
-        <li class="active">Full Audit Log + export</li>
-        <li class="active">Project-bound account linking</li>
-        <li class="active">Documentation Mode</li>
       </ul>
       <div class="tier-capacity">
         <div class="tier-capacity-label">Capacity</div>
-        <div class="tier-capacity-body">Up to 15 users per workspace</div>
+        <div class="tier-capacity-body">Higher operational elasticity<br>Governed collaboration across external cells<br>Advanced data control and auditability<br>Documentation Mode</div>
       </div>
       <a href="/" class="tier-cta tier-cta-primary">Request pilot access</a>
     </div>
@@ -1126,7 +1234,7 @@
       <div class="tier-name">Enterprise</div>
       <div class="tier-price">Custom</div>
       <div class="tier-cadence">Custom</div>
-      <div class="tier-audience">Firmas medianas o grandes (15+ usuarios)</div>
+      <div class="tier-audience">For enterprise environments with advanced governance requirements<br>1 account · 1 user<br>Single-user enterprise account with maximum governance depth</div>
       <hr class="tier-divider">
       <ul class="tier-features">
         <li class="active">Everything in Business</li>
@@ -1134,13 +1242,13 @@
         <li class="active">Custom model integration</li>
         <li class="active">Signed session certificates (PDF)</li>
         <li class="active">Phase sign-off mechanism</li>
-        <li class="active">SSO / Active Directory</li>
         <li class="active">Dedicated onboarding</li>
+        <li class="active">SSO / Active Directory</li>
         <li class="active">SLA + compliance review</li>
       </ul>
       <div class="tier-capacity">
         <div class="tier-capacity-label">Capacity</div>
-        <div class="tier-capacity-body">15+ users<br>Dedicated deployment</div>
+        <div class="tier-capacity-body">Enterprise-grade data control<br>Private infrastructure flexibility<br>Maximum traceability and infrastructure control</div>
       </div>
       <a href="mailto:contact@aisync.io" class="tier-cta tier-cta-ghost">Contact us</a>
     </div>
